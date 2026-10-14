@@ -35,6 +35,7 @@ def test_at09_two_stage_synthesis(evidence_registry: EvidenceRegistry) -> None:
         unit="USD",
         period_end="2024-06-30",
         question_ids=["Q_REV"],
+        source_url="https://sec.gov",
         validation_status=EvidenceValidationStatus.VALID,
     )
     evidence_registry.add_evidence(ev_rev)
@@ -85,6 +86,8 @@ def test_at09_two_stage_synthesis(evidence_registry: EvidenceRegistry) -> None:
     assert len(draft.claims) > 0
     assert "EV_REV_2024" in draft.evidence_ids
     assert "SRC_10K_2024" in draft.source_ids
+    assert draft.claims[0].source_urls == ["https://sec.gov"]
+    assert "https://sec.gov" in draft.narrative
 
     # Stage 2: Assemble complete report from section drafts
     final_report = report_service.assemble_report(run, itinerary, section_drafts)
@@ -95,3 +98,4 @@ def test_at09_two_stage_synthesis(evidence_registry: EvidenceRegistry) -> None:
     assert len(final_report.bibliography) == 1
     assert final_report.bibliography[0].source_id == "SRC_10K_2024"
     assert "Executive Summary" in final_report.executive_summary
+    assert "https://sec.gov" in final_report.executive_summary
