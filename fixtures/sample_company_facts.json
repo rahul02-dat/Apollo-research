@@ -1,0 +1,102 @@
+{
+  "cik": 789019,
+  "entityName": "MICROSOFT CORPORATION",
+  "facts": {
+    "us-gaap": {
+      "Revenues": {
+        "label": "Revenue",
+        "description": "Total revenue from all operating segments",
+        "units": {
+          "USD": [
+            {
+              "end": "2023-06-30",
+              "val": 211915000000,
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-07-27",
+              "accn": "0000789019-23-000085"
+            },
+            {
+              "end": "2024-06-30",
+              "val": 245122000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-07-30",
+              "accn": "0000789019-24-000078"
+            }
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        "label": "Net Income",
+        "description": "Net income",
+        "units": {
+          "USD": [
+            {
+              "end": "2024-06-30",
+              "val": 88136000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-07-30",
+              "accn": "0000789019-24-000078"
+            }
+          ]
+        }
+      },
+      "Assets": {
+        "label": "Total Assets",
+        "description": "Total Assets",
+        "units": {
+          "USD": [
+            {
+              "end": "2024-06-30",
+              "val": 512163000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-07-30",
+              "accn": "0000789019-24-000078"
+            }
+          ]
+        }
+      },
+      "Liabilities": {
+        "label": "Total Liabilities",
+        "description": "Total Liabilities",
+        "units": {
+          "USD": [
+            {
+              "end": "2024-06-30",
+              "val": 243686000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-07-30",
+              "accn": "0000789019-24-000078"
+            }
+          ]
+        }
+      },
+      "CashAndCashEquivalentsAtCarryingValue": {
+        "label": "Cash and Cash Equivalents",
+        "description": "Cash and Cash Equivalents",
+        "units": {
+          "USD": [
+            {
+              "end": "2024-06-30",
+              "val": 75545000000,
+              "fy": 2024,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-07-30",
+              "accn": "0000789019-24-000078"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apollo-research"
+version = "0.1.0"
+description = "Apollo: Plugin-based financial research agent with verifiable SEC citations"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Apollo Team" }
+]
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint>=2.0.0",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
+    "reportlab>=4.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+postgres = [
+    "psycopg[binary]>=3.1.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
+]
+
+[project.entry-points."apollo.source_plugins"]
+sec_edgar = "app.plugins.builtin.sec_source.plugin:create_plugin"
+
+[project.entry-points."apollo.extractor_plugins"]
+filing_html = "app.plugins.builtin.html_extractor.plugin:create_plugin"
+xbrl_facts = "app.plugins.builtin.xbrl_extractor.plugin:create_plugin"
+
+[project.entry-points."apollo.validator_plugins"]
+financial_checks = "app.plugins.builtin.evidence_validator.plugin:create_plugin"
+
+[project.entry-points."apollo.synthesis_plugins"]
+financial_synthesis = "app.plugins.builtin.synthesis_strategy.plugin:create_plugin"
+
+[project.entry-points."apollo.model_plugins"]
+ollama = "app.plugins.builtin.model_provider.plugin:create_ollama_plugin"
+mock = "app.plugins.builtin.model_provider.plugin:create_mock_plugin"
+
+[project.entry-points."apollo.exporter_plugins"]
+pdf = "app.plugins.builtin.pdf_exporter.plugin:create_plugin"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]

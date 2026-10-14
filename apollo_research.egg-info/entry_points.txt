@@ -1,0 +1,19 @@
+[apollo.exporter_plugins]
+pdf = app.plugins.builtin.pdf_exporter.plugin:create_plugin
+
+[apollo.extractor_plugins]
+filing_html = app.plugins.builtin.html_extractor.plugin:create_plugin
+xbrl_facts = app.plugins.builtin.xbrl_extractor.plugin:create_plugin
+
+[apollo.model_plugins]
+mock = app.plugins.builtin.model_provider.plugin:create_mock_plugin
+ollama = app.plugins.builtin.model_provider.plugin:create_ollama_plugin
+
+[apollo.source_plugins]
+sec_edgar = app.plugins.builtin.sec_source.plugin:create_plugin
+
+[apollo.synthesis_plugins]
+financial_synthesis = app.plugins.builtin.synthesis_strategy.plugin:create_plugin
+
+[apollo.validator_plugins]
+financial_checks = app.plugins.builtin.evidence_validator.plugin:create_plugin

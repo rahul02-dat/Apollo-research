@@ -1,0 +1,682 @@
+import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
+
+let defaultPort: UInt16 = 3000
+let envPort = ProcessInfo.processInfo.environment["PORT"].flatMap { UInt16($0) }
+let PORT: UInt16 = envPort ?? defaultPort
+
+let dashboardHTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apollo — Financial Research Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #0B0F19;
+            --bg-surface: #111827;
+            --bg-elevated: #1F2937;
+            --border-subtle: #374151;
+            --border-focus: #3B82F6;
+            --text-primary: #F9FAFB;
+            --text-secondary: #9CA3AF;
+            --text-muted: #6B7280;
+            --accent-blue: #3B82F6;
+            --accent-cyan: #06B6D4;
+            --accent-green: #10B981;
+            --accent-amber: #F59E0B;
+            --accent-red: #EF4444;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border-subtle);
+            margin-bottom: 2rem;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-badge {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            color: white;
+            font-weight: 700;
+            font-size: 1.25rem;
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+
+        .logo-title h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .logo-title p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .system-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.85rem;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 9999px;
+            font-size: 0.85rem;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 868px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-card);
+            transition: border-color 0.2s ease;
+        }
+
+        .card:hover {
+            border-color: #4B5563;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .card-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem 1.5rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), #2563EB);
+            color: white;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.45);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--accent-green), #059669);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--accent-red), #DC2626);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.65rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-planning { background: rgba(59, 130, 246, 0.2); color: #60A5FA; }
+        .status-awaiting { background: rgba(245, 158, 11, 0.2); color: #FBBF24; }
+        .status-researching { background: rgba(6, 182, 212, 0.2); color: #22D3EE; }
+        .status-synthesizing { background: rgba(168, 85, 247, 0.2); color: #C084FC; }
+        .status-complete { background: rgba(16, 185, 129, 0.2); color: #34D399; }
+        .status-incomplete { background: rgba(245, 158, 11, 0.2); color: #FBBF24; }
+        .status-failed { background: rgba(239, 68, 68, 0.2); color: #F87171; }
+
+        .log-box {
+            background: #000;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: #A7F3D0;
+            height: 220px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        th {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        a.sec-link {
+            color: var(--accent-cyan);
+            text-decoration: underline;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-area">
+                <div class="logo-badge">Α</div>
+                <div class="logo-title">
+                    <h1>Apollo Financial Research</h1>
+                    <p>Plugin-Based Autonomous Research Agent · Swift Web Dashboard</p>
+                </div>
+            </div>
+            <div class="system-pill">
+                <div class="pulse-dot"></div>
+                <span id="api-status">Connecting to FastAPI (8000)...</span>
+            </div>
+        </header>
+
+        <div class="grid-2">
+            <!-- Research Submission Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Initiate Company Research</h2>
+                    <span class="status-badge status-planning" id="current-run-badge">READY</span>
+                </div>
+                <form id="research-form">
+                    <div class="form-group">
+                        <label for="ticker">Ticker Symbol or Company Name</label>
+                        <input type="text" id="ticker" placeholder="e.g. MSFT, AAPL, NVDA" value="MSFT" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="objective">Research Scope & Objective</label>
+                        <textarea id="objective" rows="3">Analyze annual financial results, revenue performance, liquidity, business segments, and principal risks.</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="start-btn">
+                        <span>Launch Apollo Research</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Execution Status & Approval Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Workflow Execution & Approval</h2>
+                    <span id="run-id-display" style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">No active run</span>
+                </div>
+
+                <div id="approval-box" class="form-group hidden" style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--accent-amber); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                    <h3 style="color: var(--accent-amber); font-size: 0.95rem; margin-bottom: 0.5rem;">Human Approval Checkpoint</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                        Apollo has resolved the issuer and generated the research itinerary. Review and authorize retrieval.
+                    </p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" class="btn btn-success" id="approve-btn" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Approve Itinerary</button>
+                        <button type="button" class="btn btn-danger" id="reject-btn" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Reject Plan</button>
+                    </div>
+                </div>
+
+                <div class="log-box" id="workflow-log">Ready. Submit an issuer ticker to begin research.</div>
+            </div>
+        </div>
+
+        <!-- Research Details Card -->
+        <div class="card" id="details-card">
+            <div style="display: flex; gap: 1rem; border-bottom: 1px solid var(--border-subtle); margin-bottom: 1rem;">
+                <button class="tab-btn active" onclick="switchTab('itinerary-tab', this)">Research Itinerary</button>
+                <button class="tab-btn" onclick="switchTab('evidence-tab', this)">Evidence & Sources</button>
+                <button class="tab-btn" onclick="switchTab('report-tab', this)">Report & PDF</button>
+            </div>
+
+            <!-- Itinerary Tab -->
+            <div id="itinerary-tab">
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">Proposed research sections and question-level coverage tracking:</p>
+                <div id="itinerary-content" style="font-size: 0.9rem;">No itinerary planned yet.</div>
+            </div>
+
+            <!-- Evidence Tab -->
+            <div id="evidence-tab" class="hidden">
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">Primary SEC EDGAR filings and extracted XBRL/narrative evidence:</p>
+                <div id="evidence-content">No evidence retrieved yet.</div>
+            </div>
+
+            <!-- Report Tab -->
+            <div id="report-tab" class="hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 style="font-size: 1.1rem;">Generated Financial Research Report</h3>
+                    <a id="download-pdf-btn" href="#" class="btn btn-primary hidden" download>
+                        Download PDF Report
+                    </a>
+                </div>
+                <div id="report-content" style="background: var(--bg-elevated); padding: 1.5rem; border-radius: 8px; line-height: 1.7; font-size: 0.9rem;">
+                    Report generation pending.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        let activeRunId = null;
+        let pollTimer = null;
+
+        function log(msg) {
+            const el = document.getElementById("workflow-log");
+            const time = new Date().toLocaleTimeString();
+            el.innerText += `[${time}] ${msg}\\n`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                if (res.ok) {
+                    document.getElementById("api-status").innerText = "FastAPI Backend Connected";
+                } else {
+                    document.getElementById("api-status").innerText = "API Offline";
+                }
+            } catch (e) {
+                document.getElementById("api-status").innerText = "API Disconnected";
+            }
+        }
+
+        function switchTab(tabId, btn) {
+            document.querySelectorAll("#itinerary-tab, #evidence-tab, #report-tab").forEach(el => el.classList.add("hidden"));
+            document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+            document.getElementById(tabId).classList.remove("hidden");
+            btn.classList.add("active");
+        }
+
+        document.getElementById("research-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const ticker = document.getElementById("ticker").value.trim();
+            const objective = document.getElementById("objective").value.trim();
+            const btn = document.getElementById("start-btn");
+
+            btn.disabled = true;
+            log(`Initiating research request for "${ticker}"...`);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/runs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ticker_or_name: ticker, objective: objective })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || "Failed to start run");
+                }
+
+                const data = await res.json();
+                activeRunId = data.run.run_id;
+                document.getElementById("run-id-display").innerText = `Run ID: ${activeRunId}`;
+                updateRunStatus(data.run.status);
+
+                log(`Run created: ${activeRunId}. Issuer resolved to CIK ${data.run.cik} (${data.run.company_name}).`);
+                log(`Itinerary proposed: ${data.itinerary.sections.length} sections, ${data.itinerary.questions.length} questions.`);
+
+                renderItinerary(data.itinerary);
+
+                // Show approval prompt
+                document.getElementById("approval-box").classList.remove("hidden");
+            } catch (err) {
+                log(`Error: ${err.message}`);
+                alert(`Error: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById("approve-btn").addEventListener("click", async () => {
+            if (!activeRunId) return;
+            log("User approved research plan. Resuming execution...");
+            document.getElementById("approval-box").classList.add("hidden");
+
+            try {
+                const res = await fetch(`${API_BASE}/api/runs/${activeRunId}/approvals`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ decision: "APPROVED", async_execution: false })
+                });
+
+                const run = await res.json();
+                updateRunStatus(run.status);
+                log(`Research workflow finished with status: ${run.status}`);
+
+                // Load evidence and report
+                await loadEvidence(activeRunId);
+                await loadReport(activeRunId);
+            } catch (err) {
+                log(`Execution failed: ${err.message}`);
+            }
+        });
+
+        document.getElementById("reject-btn").addEventListener("click", async () => {
+            if (!activeRunId) return;
+            log("User rejected research plan.");
+            document.getElementById("approval-box").classList.add("hidden");
+
+            await fetch(`${API_BASE}/api/runs/${activeRunId}/approvals`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ decision: "REJECTED" })
+            });
+            updateRunStatus("FAILED");
+        });
+
+        function updateRunStatus(status) {
+            const badge = document.getElementById("current-run-badge");
+            badge.innerText = status;
+            badge.className = `status-badge status-${status.toLowerCase()}`;
+        }
+
+        function renderItinerary(itin) {
+            let html = "";
+            itin.sections.forEach(sec => {
+                html += `<div style="margin-bottom: 1rem; background: var(--bg-elevated); padding: 0.85rem; border-radius: 6px;">
+                    <strong>${sec.title}</strong>
+                    <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0.25rem 0;">${sec.description}</p>
+                    <ul style="padding-left: 1.25rem; font-size: 0.85rem;">`;
+                itin.questions.filter(q => q.section_id === sec.section_id).forEach(q => {
+                    html += `<li style="margin-top: 0.25rem;">[${q.status}] ${q.question}</li>`;
+                });
+                html += `</ul></div>`;
+            });
+            document.getElementById("itinerary-content").innerHTML = html;
+        }
+
+        async function loadEvidence(runId) {
+            try {
+                const res = await fetch(`${API_BASE}/api/runs/${runId}/evidence`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                let html = `<h4>Registered Sources (${data.total_sources})</h4><table style="margin-bottom: 1.5rem;">
+                    <tr><th>Source ID</th><th>Form</th><th>Filing Date</th><th>Period</th><th>SEC Link</th></tr>`;
+                data.sources.forEach(s => {
+                    html += `<tr><td>${s.source_id}</td><td>${s.form_type}</td><td>${s.filed_at}</td><td>${s.period_of_report}</td><td><a class="sec-link" href="${s.source_url}" target="_blank">Open SEC Filing</a></td></tr>`;
+                });
+                html += `</table><h4>Evidence Records (${data.total_evidence})</h4><table>
+                    <tr><th>Evidence ID</th><th>Locator</th><th>Excerpt / Value</th><th>Status</th></tr>`;
+                data.evidence.slice(0, 15).forEach(e => {
+                    const text = e.value !== null ? `${e.fact_name}: ${e.value} ${e.unit || ''}` : (e.excerpt ? e.excerpt.substring(0, 100) + '...' : '');
+                    html += `<tr><td>${e.evidence_id}</td><td>${e.locator}</td><td>${text}</td><td>${e.validation_status}</td></tr>`;
+                });
+                html += `</table>`;
+                document.getElementById("evidence-content").innerHTML = html;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function loadReport(runId) {
+            try {
+                const res = await fetch(`${API_BASE}/api/runs/${runId}/report`);
+                if (!res.ok) return;
+                const report = await res.json();
+
+                let html = `<h2 style="margin-bottom: 0.5rem;">${report.company_name} (${report.ticker})</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Status: <strong>${report.status}</strong> | Generated: ${new Date(report.generated_at).toLocaleString()}</p>
+                    <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem;">
+                        <h4>Executive Summary</h4>
+                        <p style="margin-top: 0.5rem;">${report.executive_summary.replace(/\\n/g, '<br>')}</p>
+                    </div>`;
+
+                report.sections.forEach(sec => {
+                    html += `<div style="margin-bottom: 1.5rem;">
+                        <h3 style="color: var(--accent-blue);">${sec.title}</h3>
+                        <p style="margin-top: 0.5rem;">${sec.narrative.replace(/\\n/g, '<br>')}</p>
+                    </div>`;
+                });
+
+                document.getElementById("report-content").innerHTML = html;
+
+                // PDF download button
+                const pdfBtn = document.getElementById("download-pdf-btn");
+                pdfBtn.href = `${API_BASE}/api/runs/${runId}/report/pdf`;
+                pdfBtn.classList.remove("hidden");
+
+                // Switch to Report Tab
+                switchTab('report-tab', document.querySelectorAll('.tab-btn')[2]);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        setInterval(checkHealth, 5000);
+        checkHealth();
+    </script>
+</body>
+</html>
+"""
+
+final class SwiftHTTPServer: Sendable {
+    private let port: UInt16
+
+    init(port: UInt16) {
+        self.port = port
+    }
+
+    func start() {
+        let serverSocket = socket(AF_INET, SOCK_STREAM, 0)
+        guard serverSocket >= 0 else {
+            fatalError("Failed to create socket")
+        }
+
+        var opt: Int32 = 1
+        setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, socklen_t(MemoryLayout<Int32>.size))
+        #if canImport(Darwin)
+        setsockopt(serverSocket, SOL_SOCKET, SO_REUSEPORT, &opt, socklen_t(MemoryLayout<Int32>.size))
+        #endif
+
+        var serverAddr = sockaddr_in()
+        serverAddr.sin_family = sa_family_t(AF_INET)
+        serverAddr.sin_port = in_port_t(self.port.bigEndian)
+        serverAddr.sin_addr.s_addr = in_addr_t(0) // INADDR_ANY
+
+        let bindResult = withUnsafePointer(to: &serverAddr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(serverSocket, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        guard bindResult >= 0 else {
+            print("❌ Error: Could not bind port \(self.port). It may already be in use by another process.")
+            print("   You can free port \(self.port) using: lsof -ti :\(self.port) | xargs kill -9")
+            print("   Or set an alternative port: PORT=3001 swift run ApolloDashboard")
+            exit(1)
+        }
+
+        guard listen(serverSocket, 20) >= 0 else {
+            print("❌ Error: Failed to listen on socket.")
+            exit(1)
+        }
+
+        print("=================================================================")
+        print(" Apollo Swift Web Dashboard running on http://localhost:\(self.port)")
+        print(" Communicating with FastAPI Backend on http://localhost:8000")
+        print("=================================================================")
+
+        while true {
+            var clientAddr = sockaddr_in()
+            var clientAddrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let clientSocket = withUnsafeMutablePointer(to: &clientAddr) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    accept(serverSocket, $0, &clientAddrLen)
+                }
+            }
+
+            guard clientSocket >= 0 else { continue }
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.handleClient(clientSocket: clientSocket)
+            }
+        }
+    }
+
+    private func handleClient(clientSocket: Int32) {
+        defer { close(clientSocket) }
+
+        var buffer = [UInt8](repeating: 0, count: 2048)
+        let bytesRead = read(clientSocket, &buffer, buffer.count)
+        guard bytesRead > 0 else { return }
+
+        let htmlData = dashboardHTML.data(using: .utf8) ?? Data()
+        let responseHeader = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(htmlData.count)\r\nConnection: close\r\n\r\n"
+
+        if let headerData = responseHeader.data(using: .utf8) {
+            _ = headerData.withUnsafeBytes { write(clientSocket, $0.baseAddress, headerData.count) }
+        }
+        _ = htmlData.withUnsafeBytes { write(clientSocket, $0.baseAddress, htmlData.count) }
+    }
+}
+
+let server = SwiftHTTPServer(port: PORT)
+server.start()

@@ -1,0 +1,8 @@
+pyproject.toml
+apollo_research.egg-info/PKG-INFO
+apollo_research.egg-info/SOURCES.txt
+apollo_research.egg-info/dependency_links.txt
+apollo_research.egg-info/entry_points.txt
+apollo_research.egg-info/requires.txt
+apollo_research.egg-info/top_level.txt
+app/config.py
