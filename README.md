@@ -1,4 +1,4 @@
-# Apollo — Plugin-Based Financial Research Platform
+# Apollo — A Financial Research Platform
 
 Apollo is a production-oriented financial research agent system designed for financial analysts and investors. Apollo investigates publicly traded companies using official US Securities and Exchange Commission (SEC EDGAR) filings and generates a downloadable, publication-grade PDF research report with verifiable citations and clickable primary-source links.
 
