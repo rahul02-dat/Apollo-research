@@ -116,6 +116,14 @@ class FinancialSynthesisPlugin:
         )
         narrative_paragraphs.append(inference_text)
 
+        # Compute deterministic financial ratios for performance and balance sheet sections
+        from app.plugins.builtin.financial_analytics.plugin import FinancialAnalyticsPlugin
+        analytics = FinancialAnalyticsPlugin().compute_metrics(section_evidence)
+        if analytics.get("summary_highlights"):
+            narrative_paragraphs.append(
+                "Key Financial Metrics & Computed Ratios:\n" + "\n".join(f"• {h}" for h in analytics["summary_highlights"])
+            )
+
         if unresolved:
             narrative_paragraphs.append(
                 f"Note: Research limitation — question(s) {', '.join(unresolved)} could not be fully answered from available filings."

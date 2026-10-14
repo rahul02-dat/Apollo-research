@@ -44,6 +44,9 @@ xbrl_facts = "app.plugins.builtin.xbrl_extractor.plugin:create_plugin"
 [project.entry-points."apollo.validator_plugins"]
 financial_checks = "app.plugins.builtin.evidence_validator.plugin:create_plugin"
 
+[project.entry-points."apollo.analytics_plugins"]
+financial_analytics = "app.plugins.builtin.financial_analytics.plugin:create_plugin"
+
 [project.entry-points."apollo.synthesis_plugins"]
 financial_synthesis = "app.plugins.builtin.synthesis_strategy.plugin:create_plugin"
 

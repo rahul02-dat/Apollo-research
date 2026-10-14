@@ -12,6 +12,7 @@ from app.models.research import RunStatus
 from app.plugins.contracts import ModelProvider, ReportExporter, SourceConnector, SynthesisStrategy
 from app.plugins.registry import PluginRegistry
 from app.services.evidence_registry import EvidenceRegistry
+from app.services.event_stream import event_broadcaster
 from app.services.report_service import ReportService
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,12 @@ class WorkflowContext:
 def normalize_request_node(state: ApolloWorkflowState, context: WorkflowContext) -> ApolloWorkflowState:
     run = state["run"]
     normalized_run = context.apollo.normalize_request(run)
+    event_broadcaster.publish(
+        run.run_id,
+        "NORMALIZE_REQUEST",
+        f"Normalized research objective for {normalized_run.company_name or 'issuer'}",
+        {"objective": normalized_run.objective},
+    )
     return {
         "run": normalized_run,
         "current_step": "normalize_request",
@@ -50,6 +57,12 @@ def resolve_issuer_node(state: ApolloWorkflowState, context: WorkflowContext) ->
     run = state["run"]
     source_plugin = context.plugin_registry.get_typed_plugin(context.source_plugin_id, SourceConnector)
     resolved_run = context.apollo.resolve_issuer(run, source_plugin)
+    event_broadcaster.publish(
+        run.run_id,
+        "RESOLVE_ISSUER",
+        f"Resolved issuer {resolved_run.company_name} (CIK: {resolved_run.cik})",
+        {"cik": resolved_run.cik, "ticker": resolved_run.ticker, "company_name": resolved_run.company_name},
+    )
     return {
         "run": resolved_run,
         "current_step": "resolve_issuer",
@@ -60,6 +73,15 @@ def plan_research_node(state: ApolloWorkflowState, context: WorkflowContext) -> 
     run = state["run"]
     itinerary = context.apollo.plan_research(run)
     updated_run = run.model_copy(update={"status": RunStatus.AWAITING_APPROVAL})
+    event_broadcaster.publish(
+        run.run_id,
+        "PLAN_PROPOSED",
+        f"Formulated research itinerary with {len(itinerary.sections)} sections and {len(itinerary.questions)} inquiry dimensions",
+        {
+            "sections": [s.title for s in itinerary.sections],
+            "questions": [q.question for q in itinerary.questions],
+        },
+    )
     return {
         "run": updated_run,
         "itinerary": itinerary,
@@ -83,6 +105,11 @@ def approve_plan_node(state: ApolloWorkflowState, context: WorkflowContext) -> A
                 decision=ApprovalDecision.APPROVED,
             )
         )
+        event_broadcaster.publish(
+            run.run_id,
+            "APPROVAL_RECEIVED",
+            "Research plan approved by analyst; initiating autonomous SEC retrieval",
+        )
         return {
             "run": updated_run,
             "approval_events": approval_events,
@@ -100,10 +127,25 @@ def retrieve_evidence_node(state: ApolloWorkflowState, context: WorkflowContext)
     itinerary = state["itinerary"]
     assert itinerary is not None, "Itinerary is required for retrieval"
 
+    event_broadcaster.publish(
+        run.run_id,
+        "ATHENA_RETRIEVAL_STARTED",
+        f"Athena retrieving primary-source SEC filings for CIK {run.cik}",
+    )
+
     context.athena.retrieve_initial_evidence(
         cik=run.cik or "0000000000",
         questions=itinerary.questions,
         source_plugin_id=context.source_plugin_id,
+    )
+
+    evidence_count = len(context.evidence_registry.list_for_run(run.run_id))
+    sources = context.evidence_registry.list_sources_for_run(run.run_id)
+    event_broadcaster.publish(
+        run.run_id,
+        "EVIDENCE_EXTRACTED",
+        f"Athena extracted {evidence_count} evidence records from {len(sources)} SEC source filings",
+        {"evidence_count": evidence_count, "source_count": len(sources)},
     )
 
     return {
@@ -123,6 +165,15 @@ def evaluate_gaps_node(state: ApolloWorkflowState, context: WorkflowContext) -> 
         max_rounds=run.max_followup_rounds,
     )
 
+    unanswered = assessment.unanswered_count
+    gaps = assessment.gap_count
+    event_broadcaster.publish(
+        run.run_id,
+        "HERMES_EVALUATING",
+        f"Hermes gap analysis: {len(itinerary.questions) - unanswered}/{len(itinerary.questions)} questions answered, {gaps} gaps identified (Round {run.followup_round}/{run.max_followup_rounds})",
+        {"unanswered": unanswered, "gaps": gaps, "supported": assessment.supported_count},
+    )
+
     updated_itinerary = itinerary.model_copy(update={"questions": updated_questions})
     return {
         "coverage": assessment,
@@ -138,6 +189,12 @@ def route_followup_node(state: ApolloWorkflowState, context: WorkflowContext) ->
 
     next_gap = context.hermes.identify_next_followup(coverage)
     if next_gap:
+        event_broadcaster.publish(
+            run.run_id,
+            "GAP_DETECTED",
+            f"Hermes routing follow-up search for '{next_gap.question_id}': {next_gap.reason}",
+            {"question_id": next_gap.question_id, "filing_types": next_gap.follow_up.filing_types},
+        )
         context.athena.retrieve_followup_evidence(
             cik=run.cik or "0000000000",
             follow_up=next_gap.follow_up,
@@ -158,6 +215,11 @@ def synthesize_sections_node(state: ApolloWorkflowState, context: WorkflowContex
     assert itinerary is not None
 
     updated_run = run.model_copy(update={"status": RunStatus.SYNTHESIZING})
+    event_broadcaster.publish(
+        run.run_id,
+        "SYNTHESIS_STARTED",
+        f"Synthesizing {len(itinerary.sections)} report sections using {context.model_plugin_id} and financial analytics",
+    )
 
     synthesis_plugin = context.plugin_registry.get_typed_plugin("financial_synthesis", SynthesisStrategy)
     model_plugin = context.plugin_registry.get_typed_plugin(context.model_plugin_id, ModelProvider)
@@ -185,6 +247,13 @@ def assemble_report_node(state: ApolloWorkflowState, context: WorkflowContext) -
     final_report = report_service.assemble_report(run, itinerary, drafts)
 
     updated_run = run.model_copy(update={"status": final_report.status})
+    total_claims = sum(len(s.claims) for s in final_report.sections)
+    event_broadcaster.publish(
+        run.run_id,
+        "VALIDATION_COMPLETED",
+        f"Report assembled with deterministic validation status: {final_report.status.value}. Verified {total_claims} factual claims",
+        {"status": final_report.status.value, "claim_count": total_claims},
+    )
 
     return {
         "run": updated_run,
@@ -205,7 +274,21 @@ def render_pdf_node(state: ApolloWorkflowState, context: WorkflowContext) -> Apo
         report,
     )
 
+    event_broadcaster.publish(
+        report.run_id,
+        "PDF_GENERATED",
+        f"Generated ReportLab PDF artifact: {artifact.file_path}",
+        {"artifact_id": artifact.artifact_id, "file_path": artifact.file_path, "file_size_bytes": artifact.file_size_bytes},
+    )
+    event_broadcaster.publish(
+        report.run_id,
+        "RUN_COMPLETED",
+        f"Research run {report.run_id} completed successfully!",
+        {"status": report.status.value},
+    )
+
     return {
         "report_artifact": artifact,
         "current_step": "render_pdf",
     }
+

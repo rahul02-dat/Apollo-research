@@ -14,6 +14,7 @@ from app.persistence.checkpointer import get_checkpointer
 from app.persistence.database import RunStore, run_store
 from app.plugins.builtin import register_builtin_plugins
 from app.plugins.registry import PluginRegistry
+from app.services.event_stream import event_broadcaster
 from app.services.evidence_registry import EvidenceRegistry
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ class WorkflowManager:
         }
 
         # Run up to approval checkpoint
+        event_broadcaster.publish(run_id, "RUN_INITIATED", f"Initiating research run for '{ticker_or_name}'", {"objective": objective})
         final_state = graph.invoke(initial_state, config=config)
 
         run = final_state["run"]
@@ -109,12 +111,14 @@ class WorkflowManager:
         self.store.add_approval(event)
 
         if decision == ApprovalDecision.REJECTED:
+            event_broadcaster.publish(run_id, "RUN_REJECTED", "Research plan rejected by user.", {"feedback": feedback})
             updated_run = run.model_copy(update={"status": RunStatus.FAILED, "error_message": "Plan rejected by user."})
             self.store.save_run(updated_run)
             return updated_run
 
         # Execute resume logic
         if async_execution:
+            event_broadcaster.publish(run_id, "RUN_RESUMED", "Workflow resumed in background async worker.")
             thread = threading.Thread(target=self._execute_workflow, args=(run_id,))
             thread.daemon = True
             thread.start()
@@ -156,6 +160,7 @@ class WorkflowManager:
             return final_run
         except Exception as e:
             logger.exception("Workflow execution failed for run %s: %s", run_id, e)
+            event_broadcaster.publish(run_id, "RUN_FAILED", f"Workflow execution failed: {e}")
             run = self.store.get_run(run_id)
             if run:
                 failed_run = run.model_copy(update={"status": RunStatus.FAILED, "error_message": str(e)})

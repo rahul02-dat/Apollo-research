@@ -2,8 +2,10 @@
 
 from typing import Any
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from app.models.research import ResearchItinerary, ResearchRun
+from app.services.event_stream import event_broadcaster
 from app.services.workflow_manager import workflow_manager
 
 router = APIRouter(prefix="/api/runs", tags=["Research Runs"])
@@ -57,3 +59,22 @@ def get_run_itinerary(run_id: str) -> ResearchItinerary:
     if not itinerary:
         raise HTTPException(status_code=404, detail=f"Itinerary for run '{run_id}' not found.")
     return itinerary
+
+
+@router.get("/{run_id}/events")
+async def stream_run_events(run_id: str) -> StreamingResponse:
+    """Server-Sent Events (SSE) stream for real-time run progress updates."""
+    run = workflow_manager.store.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+
+    return StreamingResponse(
+        event_broadcaster.subscribe_async(run_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+

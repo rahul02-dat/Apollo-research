@@ -466,6 +466,9 @@ let dashboardHTML = """
 
                 // Show approval prompt
                 document.getElementById("approval-box").classList.remove("hidden");
+
+                // Start SSE stream for real-time progress
+                startEventStream(activeRunId);
             } catch (err) {
                 log(`Error: ${err.message}`);
                 alert(`Error: ${err.message}`);
@@ -473,6 +476,49 @@ let dashboardHTML = """
                 btn.disabled = false;
             }
         });
+
+        let activeEventSource = null;
+
+        function startEventStream(runId) {
+            if (activeEventSource) {
+                activeEventSource.close();
+            }
+
+            log(`[SSE] Connected to real-time event stream for ${runId}`);
+            activeEventSource = new EventSource(`${API_BASE}/api/runs/${runId}/events`);
+
+            activeEventSource.onmessage = async (e) => {
+                try {
+                    const event = JSON.parse(e.data);
+                    log(`⚡ [${event.event_type}] ${event.message}`);
+
+                    if (event.event_type === "PLAN_PROPOSED") {
+                        updateRunStatus("AWAITING_APPROVAL");
+                    } else if (event.event_type === "ATHENA_RETRIEVAL_STARTED" || event.event_type === "EVIDENCE_EXTRACTED") {
+                        updateRunStatus("RESEARCHING");
+                    } else if (event.event_type === "SYNTHESIS_STARTED") {
+                        updateRunStatus("SYNTHESIZING");
+                    } else if (event.event_type === "VALIDATION_COMPLETED") {
+                        updateRunStatus("VALIDATING");
+                    } else if (event.event_type === "RUN_COMPLETED") {
+                        updateRunStatus(event.data.status || "COMPLETE");
+                        log("🎉 Workflow finished. Populating evidence and final report...");
+                        await loadEvidence(runId);
+                        await loadReport(runId);
+                        activeEventSource.close();
+                    } else if (event.event_type === "RUN_FAILED" || event.event_type === "RUN_REJECTED") {
+                        updateRunStatus("FAILED");
+                        activeEventSource.close();
+                    }
+                } catch (err) {
+                    console.error("SSE parse error", err);
+                }
+            };
+
+            activeEventSource.onerror = (err) => {
+                console.warn("SSE stream idle or disconnected", err);
+            };
+        }
 
         document.getElementById("approve-btn").addEventListener("click", async () => {
             if (!activeRunId) return;
@@ -483,16 +529,12 @@ let dashboardHTML = """
                 const res = await fetch(`${API_BASE}/api/runs/${activeRunId}/approvals`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ decision: "APPROVED", async_execution: false })
+                    body: JSON.stringify({ decision: "APPROVED", async_execution: true })
                 });
 
                 const run = await res.json();
                 updateRunStatus(run.status);
-                log(`Research workflow finished with status: ${run.status}`);
-
-                // Load evidence and report
-                await loadEvidence(activeRunId);
-                await loadReport(activeRunId);
+                log(`Async execution started: current status is ${run.status}`);
             } catch (err) {
                 log(`Execution failed: ${err.message}`);
             }

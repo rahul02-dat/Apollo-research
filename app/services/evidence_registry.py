@@ -29,6 +29,9 @@ class EvidenceRegistry:
     def list_sources(self) -> list[SourceDocument]:
         return list(self._sources.values())
 
+    def list_sources_for_run(self, run_id: str | None = None) -> list[SourceDocument]:
+        return self.list_sources()
+
     def add_evidence(self, record: EvidenceRecord) -> EvidenceRecord:
         """Registers a normalized evidence record."""
         self._evidence[record.evidence_id] = record
@@ -49,6 +52,9 @@ class EvidenceRegistry:
 
     def list_evidence(self) -> list[EvidenceRecord]:
         return list(self._evidence.values())
+
+    def list_for_run(self, run_id: str | None = None) -> list[EvidenceRecord]:
+        return self.list_evidence()
 
     def get_evidence_for_question(self, question_id: str) -> list[EvidenceRecord]:
         evidence_ids = self._question_to_evidence.get(question_id, [])
