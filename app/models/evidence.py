@@ -15,6 +15,7 @@ class EvidenceValidationStatus(str, Enum):
 class EvidenceRecord(BaseModel):
     evidence_id: str
     source_id: str
+    source_url: str | None = None
     locator: str  # section name, XBRL tag, table identifier
     excerpt: str | None = None
     question_ids: list[str] = Field(default_factory=list)

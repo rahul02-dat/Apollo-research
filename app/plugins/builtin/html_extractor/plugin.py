@@ -105,6 +105,7 @@ class HTMLExtractorPlugin:
                     EvidenceRecord(
                         evidence_id=evidence_id,
                         source_id=document_ref.source_id,
+                        source_url=document_ref.url,
                         locator=section_name,
                         excerpt=excerpt_candidate,
                         question_ids=matched_qids,
@@ -125,6 +126,7 @@ class HTMLExtractorPlugin:
                 EvidenceRecord(
                     evidence_id=f"EV_HTML_{document_ref.source_id}_overview",
                     source_id=document_ref.source_id,
+                    source_url=document_ref.url,
                     locator="General Filing Disclosure",
                     excerpt=clean_text[:2000].strip(),
                     question_ids=[q.question_id for q in (questions or [])[:1]],

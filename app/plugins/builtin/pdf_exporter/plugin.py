@@ -160,12 +160,21 @@ class PDFExporterPlugin:
                 if not p.strip() or p.strip().startswith("###"):
                     continue
 
-                formatted_p = p.replace("&", "&amp;")
+                formatted_p = p
+                import re
+                def _make_anchor(m: re.Match) -> str:
+                    lbl = m.group(1).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    u = m.group(2).replace("&", "&amp;")
+                    return f'<a href="{u}" color="#3182CE"><u>{lbl}</u></a>'
+
+                formatted_p = re.sub(r'\[([^\]]+)\]\(((?:https?://|ftp://)[^\s\)]+)\)', _make_anchor, formatted_p)
+
                 for src_id, url in source_url_map.items():
-                    if src_id in formatted_p:
+                    if src_id in formatted_p and f'href="{url}"' not in formatted_p:
                         link_html = f'<a href="{url}" color="#3182CE"><u>{src_id}</u></a>'
                         formatted_p = formatted_p.replace(src_id, link_html)
 
+                formatted_p = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', formatted_p)
                 story.append(Paragraph(formatted_p, body_style))
 
             if section.unresolved_questions:

@@ -69,6 +69,8 @@ class FinancialSynthesisPlugin:
         used_evidence_ids: list[str] = []
         used_source_ids: set[str] = set()
 
+        primary_source_url = next((e.source_url for e in section_evidence if e.source_url), None)
+
         for idx, ev in enumerate(section_evidence, 1):
             used_evidence_ids.append(ev.evidence_id)
             used_source_ids.add(ev.source_id)
@@ -85,6 +87,7 @@ class FinancialSynthesisPlugin:
                 claim_type = ClaimType.DIRECT_FACT
 
             claim_id = f"CLM_{section.section_id}_{idx}"
+            ev_source_urls = [ev.source_url] if ev.source_url else []
             claim = Claim(
                 claim_id=claim_id,
                 section_id=section.section_id,
@@ -92,10 +95,16 @@ class FinancialSynthesisPlugin:
                 claim_type=claim_type,
                 evidence_ids=[ev.evidence_id],
                 source_ids=[ev.source_id],
+                source_urls=ev_source_urls,
                 is_valid=True,
             )
             claims.append(claim)
-            narrative_paragraphs.append(f"{claim_text} [Ref: {ev.evidence_id}]")
+
+            if ev.source_url:
+                citation_link = f"[{ev.locator}]({ev.source_url})"
+            else:
+                citation_link = f"[{ev.locator}]"
+            narrative_paragraphs.append(f"{claim_text} [Source: {citation_link}]")
 
         # Analytical synthesis paragraph
         inference_claim_id = f"CLM_{section.section_id}_ANALYSIS"
@@ -103,6 +112,7 @@ class FinancialSynthesisPlugin:
             f"Analytical evaluation of {section.title.lower()} indicates verified disclosures "
             f"across {len(section_evidence)} primary evidence items."
         )
+        all_source_urls = list({e.source_url for e in section_evidence if e.source_url})
         claims.append(
             Claim(
                 claim_id=inference_claim_id,
@@ -111,17 +121,27 @@ class FinancialSynthesisPlugin:
                 claim_type=ClaimType.ANALYTICAL_INFERENCE,
                 evidence_ids=list(used_evidence_ids),
                 source_ids=list(used_source_ids),
+                source_urls=all_source_urls,
                 is_valid=True,
             )
         )
-        narrative_paragraphs.append(inference_text)
+        if primary_source_url:
+            narrative_paragraphs.append(f"{inference_text} [Source: [SEC EDGAR Filings]({primary_source_url})]")
+        else:
+            narrative_paragraphs.append(inference_text)
 
         # Compute deterministic financial ratios for performance and balance sheet sections
         from app.plugins.builtin.financial_analytics.plugin import FinancialAnalyticsPlugin
         analytics = FinancialAnalyticsPlugin().compute_metrics(section_evidence)
         if analytics.get("summary_highlights"):
+            highlight_lines = []
+            for h in analytics["summary_highlights"]:
+                if primary_source_url:
+                    highlight_lines.append(f"• {h} [Source: [SEC XBRL Data]({primary_source_url})]")
+                else:
+                    highlight_lines.append(f"• {h}")
             narrative_paragraphs.append(
-                "Key Financial Metrics & Computed Ratios:\n" + "\n".join(f"• {h}" for h in analytics["summary_highlights"])
+                "Key Financial Metrics & Computed Ratios:\n" + "\n".join(highlight_lines)
             )
 
         if unresolved:

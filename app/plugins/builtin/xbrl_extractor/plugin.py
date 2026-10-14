@@ -132,6 +132,7 @@ class XBRLExtractorPlugin:
                         EvidenceRecord(
                             evidence_id=evidence_id,
                             source_id=source_id,
+                            source_url=document_ref.url,
                             locator=f"XBRL us-gaap:{tag}",
                             excerpt=excerpt,
                             question_ids=matched_qids,

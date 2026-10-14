@@ -55,8 +55,10 @@ let dashboardHTML = """
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1280px;
+            width: 100%;
             margin: 0 auto;
+            min-width: 0;
         }
 
         header {
@@ -123,6 +125,7 @@ let dashboardHTML = """
             grid-template-columns: 1fr 1fr;
             gap: 1.5rem;
             margin-bottom: 2rem;
+            min-width: 0;
         }
 
         @media (max-width: 868px) {
@@ -138,6 +141,9 @@ let dashboardHTML = """
             padding: 1.5rem;
             box-shadow: var(--shadow-card);
             transition: border-color 0.2s ease;
+            max-width: 100%;
+            min-width: 0;
+            overflow: hidden;
         }
 
         .card:hover {
@@ -259,31 +265,99 @@ let dashboardHTML = """
             line-height: 1.5;
         }
 
-        .table-responsive {
-            overflow-x: auto;
-            margin-top: 1rem;
-        }
-
-        table {
+        .table-scroll-container {
             width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
+            max-width: 100%;
+            max-height: 480px;
+            overflow-x: auto;
+            overflow-y: auto;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            margin-top: 0.75rem;
+            margin-bottom: 1.5rem;
+            background: var(--bg-surface);
+            scrollbar-width: thin;
+            scrollbar-color: #4B5563 var(--bg-surface);
+            position: relative;
+            -webkit-overflow-scrolling: touch;
         }
 
-        th, td {
+        .table-scroll-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .table-scroll-container::-webkit-scrollbar-track {
+            background: var(--bg-surface);
+            border-radius: 4px;
+        }
+
+        .table-scroll-container::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 4px;
+        }
+
+        .table-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: #4B5563;
+        }
+
+        .data-table {
+            width: 100%;
+            min-width: 680px;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 0.85rem;
+            table-layout: auto;
+        }
+
+        .data-table th, .data-table td {
             padding: 0.75rem 1rem;
             text-align: left;
             border-bottom: 1px solid var(--border-subtle);
+            vertical-align: top;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            line-height: 1.5;
         }
 
-        th {
+        .data-table th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
             background: var(--bg-elevated);
             color: var(--text-secondary);
             font-weight: 600;
+            border-bottom: 2px solid var(--border-subtle);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        }
+
+        .data-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .id-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            background: rgba(6, 182, 212, 0.12);
+            padding: 0.2rem 0.45rem;
+            border-radius: 4px;
+            display: inline-block;
+            word-break: break-all;
         }
 
         a.sec-link {
             color: var(--accent-cyan);
+            text-decoration: underline;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            word-break: break-word;
+        }
+
+        a.sec-link:hover {
+            color: #67E8F9;
             text-decoration: underline;
         }
 
@@ -574,24 +648,84 @@ let dashboardHTML = """
             document.getElementById("itinerary-content").innerHTML = html;
         }
 
+        function formatMarkdownLinks(text) {
+            if (!text) return "";
+            // Replace markdown links [label](url) with clickable HTML links
+            let res = text.replace(/\\[([^\\]]+)\\]\\(((?:https?:\\/\\/)[^\\s\\)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="sec-link"><u>$1</u></a>');
+            // Format newlines
+            return res.replace(/\\n/g, '<br>');
+        }
+
         async function loadEvidence(runId) {
             try {
                 const res = await fetch(`${API_BASE}/api/runs/${runId}/evidence`);
                 if (!res.ok) return;
                 const data = await res.json();
 
-                let html = `<h4>Registered Sources (${data.total_sources})</h4><table style="margin-bottom: 1.5rem;">
-                    <tr><th>Source ID</th><th>Form</th><th>Filing Date</th><th>Period</th><th>SEC Link</th></tr>`;
+                let html = `<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                    <h4 style="color: var(--accent-cyan); font-size: 1rem;">Primary SEC EDGAR Sources (${data.total_sources})</h4>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Scroll horizontally / vertically as needed</span>
+                </div>
+                <div class="table-scroll-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Source ID</th>
+                                <th style="width: 12%;">Form</th>
+                                <th style="width: 18%;">Filing Date</th>
+                                <th style="width: 18%;">Period</th>
+                                <th style="width: 27%;">Official SEC Link</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
                 data.sources.forEach(s => {
-                    html += `<tr><td>${s.source_id}</td><td>${s.form_type}</td><td>${s.filed_at}</td><td>${s.period_of_report}</td><td><a class="sec-link" href="${s.source_url}" target="_blank">Open SEC Filing</a></td></tr>`;
+                    html += `<tr>
+                        <td><span class="id-badge">${s.source_id}</span></td>
+                        <td><strong style="color: var(--text-primary);">${s.form_type}</strong></td>
+                        <td>${s.filed_at}</td>
+                        <td>${s.period_of_report}</td>
+                        <td><a class="sec-link" href="${s.source_url}" target="_blank" rel="noopener noreferrer">↗ Open SEC Filing</a></td>
+                    </tr>`;
                 });
-                html += `</table><h4>Evidence Records (${data.total_evidence})</h4><table>
-                    <tr><th>Evidence ID</th><th>Locator</th><th>Excerpt / Value</th><th>Status</th></tr>`;
-                data.evidence.slice(0, 15).forEach(e => {
-                    const text = e.value !== null ? `${e.fact_name}: ${e.value} ${e.unit || ''}` : (e.excerpt ? e.excerpt.substring(0, 100) + '...' : '');
-                    html += `<tr><td>${e.evidence_id}</td><td>${e.locator}</td><td>${text}</td><td>${e.validation_status}</td></tr>`;
+                html += `</tbody></table></div>`;
+
+                html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; margin-bottom: 0.5rem;">
+                    <h4 style="color: var(--accent-blue); font-size: 1rem;">Verified Evidence Records (${data.total_evidence})</h4>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Extracted facts, XBRL data & narrative disclosures</span>
+                </div>
+                <div class="table-scroll-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 24%;">Evidence ID</th>
+                                <th style="width: 24%;">Locator & Source</th>
+                                <th style="width: 38%;">Verified Excerpt / Value</th>
+                                <th style="width: 14%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                data.evidence.forEach(e => {
+                    let text = "";
+                    if (e.value !== null) {
+                        text = `<strong>${e.fact_name}</strong>: ${Number(e.value).toLocaleString()} ${e.unit || ''} <span style="color: var(--text-muted); font-size: 0.8rem;">(${e.fiscal_period || e.period_end || ''})</span>`;
+                    } else if (e.excerpt) {
+                        text = e.excerpt.length > 250 ? e.excerpt.substring(0, 250) + '...' : e.excerpt;
+                    } else {
+                        text = "Disclosed";
+                    }
+
+                    const secLink = e.source_url 
+                        ? `<br><a class="sec-link" href="${e.source_url}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; margin-top: 0.35rem;">↗ View in SEC Filing</a>`
+                        : '';
+
+                    html += `<tr>
+                        <td><span class="id-badge">${e.evidence_id}</span></td>
+                        <td><strong>${e.locator}</strong>${secLink}</td>
+                        <td>${text}</td>
+                        <td><span class="status-badge status-${(e.validation_status || 'valid').toLowerCase()}">${e.validation_status}</span></td>
+                    </tr>`;
                 });
-                html += `</table>`;
+                html += `</tbody></table></div>`;
                 document.getElementById("evidence-content").innerHTML = html;
             } catch (e) {
                 console.error(e);
@@ -604,18 +738,98 @@ let dashboardHTML = """
                 if (!res.ok) return;
                 const report = await res.json();
 
-                let html = `<h2 style="margin-bottom: 0.5rem;">${report.company_name} (${report.ticker})</h2>
-                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Status: <strong>${report.status}</strong> | Generated: ${new Date(report.generated_at).toLocaleString()}</p>
-                    <div style="background: var(--bg-surface); padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem;">
-                        <h4>Executive Summary</h4>
-                        <p style="margin-top: 0.5rem;">${report.executive_summary.replace(/\\n/g, '<br>')}</p>
-                    </div>`;
+                let html = `<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">
+                    <h2>${report.company_name} (${report.ticker})</h2>
+                    <span class="status-badge status-${report.status.toLowerCase()}">${report.status}</span>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.85rem;">
+                    CIK: <strong>${report.cik}</strong> &nbsp;|&nbsp; Generated: ${new Date(report.generated_at).toLocaleString()}
+                </p>`;
 
-                report.sections.forEach(sec => {
-                    html += `<div style="margin-bottom: 1.5rem;">
-                        <h3 style="color: var(--accent-blue);">${sec.title}</h3>
-                        <p style="margin-top: 0.5rem;">${sec.narrative.replace(/\\n/g, '<br>')}</p>
-                    </div>`;
+                // Primary Sources & SEC Filings Cited Table
+                if (report.bibliography && report.bibliography.length > 0) {
+                    html += `<div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.5rem;">
+                        <h4 style="color: var(--accent-cyan); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <span>📑 Primary Sources & SEC Filings Cited (${report.bibliography.length})</span>
+                        </h4>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                            All material factual claims trace directly to the following official SEC EDGAR filings:
+                        </p>
+                        <div class="table-scroll-container" style="max-height: 220px; margin-bottom: 0;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Source ID</th>
+                                        <th>Form</th>
+                                        <th>Filing Date</th>
+                                        <th>Period</th>
+                                        <th>Official SEC EDGAR Link</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+                    report.bibliography.forEach(b => {
+                        html += `<tr>
+                            <td><span class="id-badge">${b.source_id}</span></td>
+                            <td><strong>${b.form_type}</strong></td>
+                            <td>${b.filed_at}</td>
+                            <td>${b.period_of_report}</td>
+                            <td><a class="sec-link" href="${b.source_url}" target="_blank" rel="noopener noreferrer">↗ Open SEC Filing (${b.accession_number})</a></td>
+                        </tr>`;
+                    });
+                    html += `</tbody></table></div></div>`;
+                }
+
+                // Executive Summary
+                html += `<div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+                    <h4 style="color: var(--text-primary); font-size: 1.05rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.5rem;">
+                        Executive Summary
+                    </h4>
+                    <div style="font-size: 0.9rem; line-height: 1.7; color: #E5E7EB;">
+                        ${formatMarkdownLinks(report.executive_summary)}
+                    </div>
+                </div>`;
+
+                // Sections
+                report.sections.forEach((sec, idx) => {
+                    html += `<div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+                        <h3 style="color: var(--accent-blue); font-size: 1.15rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.5rem;">
+                            ${sec.title}
+                        </h3>
+                        <div style="font-size: 0.9rem; line-height: 1.7; color: #E5E7EB; margin-bottom: 1rem;">
+                            ${formatMarkdownLinks(sec.narrative)}
+                        </div>`;
+
+                    if (sec.claims && sec.claims.length > 0) {
+                        html += `<details style="margin-top: 1rem; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0.6rem 0.85rem;">
+                            <summary style="cursor: pointer; font-size: 0.85rem; color: var(--accent-cyan); font-weight: 600;">
+                                🔍 View ${sec.claims.length} Verified Claims & Direct SEC Citations
+                            </summary>
+                            <div class="table-scroll-container" style="max-height: 250px; margin-top: 0.75rem; margin-bottom: 0.25rem;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 22%;">Claim ID</th>
+                                            <th style="width: 48%;">Factual Claim Statement</th>
+                                            <th style="width: 15%;">Type</th>
+                                            <th style="width: 15%;">Direct SEC Citation</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                        sec.claims.forEach(c => {
+                            const link = (c.source_urls && c.source_urls.length > 0)
+                                ? `<a class="sec-link" href="${c.source_urls[0]}" target="_blank" rel="noopener noreferrer">↗ SEC Source</a>`
+                                : '<span style="color: var(--text-muted); font-size: 0.75rem;">Verified</span>';
+                            html += `<tr>
+                                <td><span class="id-badge">${c.claim_id}</span></td>
+                                <td>${c.text}</td>
+                                <td><span style="font-size: 0.75rem; color: var(--text-secondary);">${c.claim_type}</span></td>
+                                <td>${link}</td>
+                            </tr>`;
+                        });
+                        html += `</tbody></table></div></details>`;
+                    }
+
+                    html += `</div>`;
                 });
 
                 document.getElementById("report-content").innerHTML = html;

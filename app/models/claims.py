@@ -17,6 +17,7 @@ class Claim(BaseModel):
     claim_type: ClaimType = ClaimType.DIRECT_FACT
     evidence_ids: list[str] = Field(default_factory=list)
     source_ids: list[str] = Field(default_factory=list)
+    source_urls: list[str] = Field(default_factory=list)
     is_valid: bool = False
     validation_notes: list[str] = Field(default_factory=list)
 

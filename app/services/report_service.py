@@ -98,10 +98,12 @@ class ReportService:
         final_status = RunStatus.COMPLETE if can_complete else RunStatus.INCOMPLETE
 
         # 5. Build Executive Summary
+        primary_bib = bibliography[0] if bibliography else None
+        source_cite = f" [{primary_bib.form_type} ({primary_bib.period_of_report})]({primary_bib.source_url})" if primary_bib else ""
         exec_summary_parts = [
             f"This research report evaluates {itinerary.company_name} ({itinerary.ticker}, CIK: {itinerary.cik}) "
             f"in response to the research objective: \"{run.objective}\".",
-            f"Research was conducted across {len(bibliography)} primary SEC EDGAR filing source(s) with "
+            f"Research was conducted across {len(bibliography)} primary SEC EDGAR filing source(s){source_cite} with "
             f"{claims_result.valid_claims} verified factual and analytical claims.",
         ]
 
