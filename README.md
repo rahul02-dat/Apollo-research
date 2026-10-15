@@ -1,87 +1,217 @@
-# Apollo — A Financial Research Platform
+# Apollo — Plugin-Based Autonomous Financial Research Agent
 
-Apollo is a production-oriented financial research agent system designed for financial analysts and investors. Apollo investigates publicly traded companies using official US Securities and Exchange Commission (SEC EDGAR) filings and generates a downloadable, publication-grade PDF research report with verifiable citations and clickable primary-source links.
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Swift 6.0](https://img.shields.io/badge/swift-6.0-orange.svg)](https://www.swift.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-purple.svg)](https://langchain-ai.github.io/langgraph/)
+[![Tests Passing](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)](tests/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> **Apollo is an enterprise-grade, autonomous financial research platform designed for equity research analysts, institutional investors, hedge funds, and investment committees.**
+> It investigates publicly traded companies using official US Securities and Exchange Commission (SEC EDGAR) filings, corporate earnings call transcripts, Form 8-K material events, and Form 4 insider transactions—generating institutional-grade PDF research reports and a real-time reactive Swift web dashboard with **100% deterministic citation provenance**.
 
 ---
 
-## 1. System Architecture
+## Table of Contents
 
-Apollo is built around three principal agents coordinated through a stateful **LangGraph** workflow:
+1. [What This Project Is About](#1-what-this-project-is-about)
+   - [The Problem with Conventional Financial AI](#the-problem-with-conventional-financial-ai)
+   - [The Apollo Solution](#the-apollo-solution)
+   - [The Anti-Hallucination & Provenance Invariant](#the-anti-hallucination--provenance-invariant)
+2. [System Architecture](#2-system-architecture)
+   - [Multi-Agent Triad (Apollo, Athena, Hermes)](#multi-agent-triad)
+   - [End-to-End Architecture Diagram](#end-to-end-architecture-diagram)
+3. [Core Capabilities & Built-in Features](#3-core-capabilities--built-in-features)
+   - [Real-Time Workflow Streaming & SSE (Phase 1)](#real-time-workflow-streaming--sse-phase-1)
+   - [Deterministic Financial Analytics & Vector Charts (Phase 2)](#deterministic-financial-analytics--vector-charts-phase-2)
+   - [Durable SQLite Persistence & Multi-Tenancy (Phase 3)](#durable-sqlite-persistence--multi-tenancy-phase-3)
+   - [Extended SEC & Alternate Data Sources (Phase 4)](#extended-sec--alternate-data-sources-phase-4)
+4. [First-Class Plugin Ecosystem](#4-first-class-plugin-ecosystem)
+   - [Plugin Contract Matrix](#plugin-contract-matrix)
+   - [Creating Custom Plugins](#creating-custom-plugins)
+5. [Getting Started & Local Installation](#5-getting-started--local-installation)
+   - [Prerequisites](#prerequisites)
+   - [Step-by-Step Setup](#step-by-step-setup)
+   - [Starting the FastAPI Backend](#step-1-start-the-fastapi-backend)
+   - [Starting the Swift Web Dashboard](#step-2-start-the-swift-web-dashboard)
+6. [Automated Acceptance Test Suite (38/38 Passing)](#6-automated-acceptance-test-suite-3838-passing)
+7. [License](#7-license)
 
-- **Apollo (Orchestrator):** Plans research, controls workflow execution, manages human approvals, enforces autonomy limits, and evaluates completion rules.
-- **Athena (Research Agent):** Discovers and retrieves official filings and financial metrics through registered source plugins, dispatching documents to narrative and XBRL extractor plugins.
-- **Hermes (Evidence & Gap Analyzer):** Evaluates question-level evidence coverage, identifies knowledge gaps, and triggers targeted follow-up retrieval requests within approved bounds.
+---
+
+## 1. What This Project Is About
+
+### The Problem with Conventional Financial AI
+
+Large Language Models (LLMs) used in finance suffer from critical flaws that prevent institutional adoption:
+- **Hallucinations & Fabricated Figures:** Models generate convincing financial metrics that differ subtly or wildly from audited statements.
+- **Untraceable Claims & Dead Links:** Generic AI summaries assert trends, growth figures, or risk factors without providing traceable proof back to primary filings.
+- **Uncontrolled Autonomy:** Autonomous web agents loop indefinitely, browse unverified blog posts, and hallucinate conclusions when source data is missing.
+- **Opaque Reasoning:** Research conclusions cannot be audited, verified, or submitted to compliance and investment committees.
+
+### The Apollo Solution
+
+**Apollo transforms corporate filings into verifiable investment intelligence.** It replaces black-box guessing with an auditable, multi-agent research pipeline anchored directly to official SEC EDGAR disclosures:
 
 ```text
-[Analyst / User]
+Research Question
        │
        ▼
-[Swift Web App Dashboard: Port 3000]
-       │
-       ▼ (HTTP REST)
-[FastAPI Backend: Port 8000]
+[Athena Retrieval] ──> US SEC EDGAR (10-K, 10-Q, 8-K, Form 4, XBRL Facts)
        │
        ▼
-[Apollo Orchestrator: LangGraph]
- ├── 1. Request Normalization & CIK Resolution
- ├── 2. Research Planning (Itinerary Generation)
- ├── 3. [HUMAN APPROVAL GATE]
- ├── 4. Athena Retrieval (SEC EDGAR Plugin)
- ├── 5. Extractors (HTML & XBRL Facts Plugins)
- ├── 6. Hermes Gap Detection Loop (Bounded Follow-ups)
- ├── 7. Stage 1: Section-Specific Synthesis
- ├── 8. Stage 2: Final Report Assembly & Claim Validation
- └── 9. ReportLab PDF Exporter (Clickable Citations)
+Evidence Record (UUID, CIK, Accession Number, Canonical URL, Verbatim Excerpt)
+       │
+       ▼
+Deterministic Financial Validator (Decimal Math, Period Alignment, Currency Check)
+       │
+       ▼
+Two-Stage Synthesis (Section Drafts ──> Assembly & Cross-Section Coherence)
+       │
+       ▼
+Final Deliverables (Publication-Grade Vector PDF + Real-Time Swift Web Dashboard)
+```
+
+### The Anti-Hallucination & Provenance Invariant
+
+Apollo guarantees institutional compliance through non-negotiable architectural invariants:
+
+1. **Deterministic Logic Governs Completion:** Only strict, deterministic Python application code can mark a research run as `COMPLETE`. No LLM prompt or plugin can declare success if requirements are unmet.
+2. **100% Required Question Coverage:** A research run is strictly marked `INCOMPLETE` if any required research question lacks a validated primary-source evidence record. Gaps are explicitly disclosed in the final report.
+3. **End-to-End Citation Provenance:** 100% of material claims in the synthesized report link directly to an immutable `EvidenceRecord` containing the issuer's CIK, accession number, fiscal period, and clickable canonical SEC EDGAR URL.
+4. **Preservation of Numeric Context:** All financial figures preserve exact `Decimal` precision, unit definitions (e.g. USD Millions), reporting period start/end dates, and fiscal periods (`FY2024`, `Q3 2024`). Floating-point approximations are prohibited.
+5. **Human-in-the-Loop Governance:** Apollo pauses at a formal **Human Approval Gate** after generating its research plan, allowing analysts to review, adjust, or approve research itineraries before retrieval commences.
+
+---
+
+## 2. System Architecture
+
+Apollo is built around a specialized three-agent team orchestrated via a stateful **LangGraph** execution graph:
+
+### Multi-Agent Triad
+
+- **Apollo (The Orchestrator):**
+  Normalizes company tickers to official SEC CIK numbers, creates tailored 5-section research itineraries, enforces autonomy budgets (default maximum of 3 follow-up rounds), and gates workflow progression behind human sign-off.
+- **Athena (The Research Agent):**
+  Executes high-throughput queries against SEC EDGAR endpoints, retrieves annual Form 10-Ks, quarterly Form 10-Qs, material event Form 8-Ks, insider trading Form 4 filings, and XBRL Company Facts, dispatching raw documents to registered document extractors.
+- **Hermes (The Evidence & Gap Analyzer):**
+  Performs question-by-question evidence coverage analysis, verifies provenance, discovers information gaps, and orchestrates targeted retrieval iterations until full coverage is achieved or the autonomy budget is exhausted.
+
+### End-to-End Architecture Diagram
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   EQUITY RESEARCH ANALYST / USER                       │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                   HTTP REST / SSE │ (Port 3000 -> Port 8000)
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                NATIVE SWIFT WEB DASHBOARD (PORT 3000)                  │
+│  ├── Executive Summary & Key Investment Findings                       │
+│  ├── Dynamic Evidence Table (Scrollable & Sizable Provenance Grid)     │
+│  ├── Financial Ratios & Multi-Year CAGR Vector SVG Charts              │
+│  ├── Corporate Events (8-K Taxonomy) & Insider Trading Radar (Form 4)   │
+│  └── Live SSE Terminal Logs with Step-by-Step Progress Bar             │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   FASTAPI BACKEND ENGINE (PORT 8000)                   │
+│  ├── Auth & Multi-Tenancy (HMAC-SHA256 JWT, Bearer Tokens, API Keys)   │
+│  ├── EventBroadcaster (Pub/Sub with In-Memory Replay Buffer)           │
+│  └── Durable SQLite Persistence (WAL Mode, Thread-Safe RunStore)        │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│              APOLLO LANGGRAPH WORKFLOW ORCHESTRATOR                    │
+│  ├── 1. Request Normalization & Ticker-to-CIK Resolution               │
+│  ├── 2. Research Itinerary Generation (5 Core Research Questions)      │
+│  ├── 3. [HUMAN APPROVAL GATE - Pause / Resume via Thread ID]           │
+│  ├── 4. Athena Retrieval (SEC EDGAR, XBRL Facts, 8-K, Form 4)          │
+│  ├── 5. Extractors (HTML Chunkers & XBRL Facts Plugins)                │
+│  ├── 6. Financial Analytics Engine (YoY Growth, Margins, Debt, CAGR)   │
+│  ├── 7. Hermes Evidence Coverage & Bounded Gap Recovery Loop           │
+│  ├── 8. Stage 1: Independent Section-Specific Synthesis (Gemma 4)      │
+│  ├── 9. Stage 2: Final Report Assembly & Citation Link Verification    │
+│  └── 10. ReportLab PDF Exporter (Vector Charts & Clickable Citations)  │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Core Invariants & Completion Rules
+## 3. Core Capabilities & Built-in Features
 
-1. **Evidence Governs Completion:** Only deterministic application logic can mark a run `COMPLETE`. No LLM prompt or plugin can override this.
-2. **100% Required Coverage:** A research run is `COMPLETE` only when every required research question has at least one valid primary-source evidence record attached.
-3. **Traceability Chain:** Every material factual claim maps to an evidence ID, which resolves to an accession number and official SEC canonical URL:
-   `Research Question → Evidence Record → Source Document → Claim → Section Draft → Final PDF`
-4. **Preservation of Financial Context:** Numeric values retain Decimal representation, units/currencies (e.g. USD), reporting period start/end dates, and fiscal periods (`FY2024`, `Q3 2024`).
-5. **Two-Stage Synthesis:** Section drafts are generated independently first; the overall report is assembled second with executive summary, transitions, limitations, and bibliography.
-6. **Bounded Autonomy:** Default maximum of 3 automatic follow-up rounds. Unresolved questions yield an `INCOMPLETE` report with explicit disclosures.
+### Real-Time Workflow Streaming & SSE (Phase 1)
+- **High-Performance Pub/Sub:** The backend features an asynchronous `EventBroadcaster` that captures every sub-agent transition, retrieval event, and synthesis milestone.
+- **Replay Buffer:** Late-joining dashboard connections automatically receive historical events, preventing missed log updates.
+- **Server-Sent Events (SSE):** `GET /api/runs/{run_id}/events` delivers zero-latency updates to the Swift dashboard.
+
+### Deterministic Financial Analytics & Vector Charts (Phase 2)
+- **Deterministic Math Engine:** The `FinancialAnalyticsPlugin` computes year-over-year revenue growth, operating margins, net margins, and debt-to-equity ratios with exact `Decimal` precision.
+- **Multi-Year CAGR:** Computes Compound Annual Growth Rates across 3-to-5 year horizons with trend classification (Accelerating, Moderate, Decelerating).
+- **Dual Vector Visualizations:**
+  - **Swift Web Dashboard:** Native responsive SVG vector charts with interactive tooltips and crisp resolution on Retina displays.
+  - **ReportLab PDF:** Embedded publication-grade vector bar charts and ratio tables rendered natively in exported research reports.
+
+### Durable SQLite Persistence & Multi-Tenancy (Phase 3)
+- **SQLite WAL Mode:** Full database persistence across application restarts using SQLite in Write-Ahead Logging (`PRAGMA journal_mode=WAL`) mode.
+- **Thread-Safe Repository:** Dedicated `RunStore` managing `ResearchRunRecord`, `EvidenceRecordEntity`, and `AuditLogRecord` entities.
+- **Cryptographic Security:** HMAC-SHA256 JWT-compatible bearer tokens and API keys with tamper detection and role-based permissions (`analyst`, `admin`).
+- **Multi-Tenant Workspace Scoping:** Runs, evidence, and audit logs are strictly isolated by workspace ID (`ws_default`, `ws_alpha`, etc.) with HTTP 403 authorization enforcement.
+
+### Extended SEC & Alternate Data Sources (Phase 4)
+- **Material Corporate Events (Form 8-K):** The `SECMaterialEventsPlugin` retrieves and classifies unscheduled corporate disclosures using official SEC Item codes:
+  - *Item 1.01:* Material Definitive Agreements
+  - *Item 2.02:* Results of Operations and Financial Condition
+  - *Item 5.02:* Departure/Election of Directors & Principal Officers
+  - *Item 7.01:* Regulation FD Disclosures
+- **Insider Trading Radar (Form 4):** Automatically extracts legal insider transactions for corporate officers and directors, tracking acquisition/disposition codes (`P` purchase, `S` sale, `A` award), share counts, and transaction prices.
+- **Corporate Transcripts & Guidance:** The `ManagementTranscriptsPlugin` extracts executive commentary and forward-looking guidance targets (FY revenue, operating margin expectations) directly from earnings call disclosures.
+- **Swift Dashboard Dedicated Tab:** A dedicated **⚡ Corporate Events & Insiders** view displays scrollable 8-K events, Form 4 insider trading cards, and executive guidance summaries.
 
 ---
 
-## 3. First-Class Plugin Architecture
+## 4. First-Class Plugin Ecosystem
 
-All extensions conform to typed Python `Protocol` interfaces and declare a `PluginManifest`:
+Apollo is designed from the ground up as a modular, plugin-based architecture. Every core component is defined as a Python `Protocol` and registered with a `PluginManifest`:
 
-| Plugin Type | Responsibility | Built-in Plugin | Capabilities |
+### Plugin Contract Matrix
+
+| Plugin ID | Type | Class | Capabilities |
 |---|---|---|---|
-| `source_connector` | Discovers and fetches sources | `sec_edgar` | `sec.issuer.resolve`, `sec.filings.search`, `sec.filings.fetch`, `sec.facts.fetch` |
-| `document_extractor` | Converts raw filings into evidence | `filing_html`, `xbrl_facts` | `documents.html.extract`, `documents.xbrl.extract` |
-| `evidence_validator` | Validates units and provenance | `financial_checks` | `evidence.financial.validate` |
-| `synthesis_strategy` | Section synthesis from evidence | `financial_synthesis` | `synthesis.sections.generate` |
-| `model_provider` | LLM invocation abstraction | `ollama` (gemma4), `mock` | `model.text.generate`, `model.structured.generate` |
-| `report_exporter` | Renders report to artifact | `pdf` (ReportLab) | `report.pdf.export` |
+| `sec_edgar` | `source_connector` | `SecEdgarPlugin` | `sec.issuer.resolve`, `sec.filings.search`, `sec.filings.fetch`, `sec.facts.fetch` |
+| `sec_material_events` | `source_connector` | `SECMaterialEventsPlugin` | `sec.8k.search`, `sec.8k.fetch`, `sec.form4.search`, `sec.form4.fetch` |
+| `management_transcripts` | `source_connector` | `ManagementTranscriptsPlugin` | `transcripts.fetch`, `transcripts.guidance.extract` |
+| `filing_html` | `document_extractor` | `FilingHtmlExtractorPlugin` | `documents.html.extract` |
+| `xbrl_facts` | `document_extractor` | `XbrlFactsExtractorPlugin` | `documents.xbrl.extract` |
+| `financial_analytics` | `evidence_validator` | `FinancialAnalyticsPlugin` | `analytics.ratios.compute`, `analytics.trends.cagr` |
+| `financial_checks` | `evidence_validator` | `FinancialChecksPlugin` | `evidence.financial.validate` |
+| `financial_synthesis` | `synthesis_strategy` | `FinancialSynthesisPlugin` | `synthesis.sections.generate` |
+| `ollama` | `model_provider` | `OllamaModelProviderPlugin` | `model.text.generate`, `model.structured.generate` (Gemma 4) |
+| `pdf` | `report_exporter` | `PdfReportExporterPlugin` | `report.pdf.export` (ReportLab Vector PDF) |
 
-### How to Create a New Plugin
+### Creating Custom Plugins
 
-1. Inherit from the relevant `Protocol` in `app/plugins/contracts.py` (e.g. `SourceConnector` or `ReportExporter`).
-2. Declare a `PluginManifest` with unique `plugin_id`, `api_version="1.0"`, and declared `capabilities`.
+To add a new data source or export format:
+1. Inherit from the typed `Protocol` in `app/plugins/contracts.py`.
+2. Define a `PluginManifest` with `plugin_id`, `version`, `api_version="1.0"`, and declared `capabilities`.
 3. Implement the required contract methods.
-4. Expose an entrypoint factory or register with `plugin_registry.register(MyPlugin())`.
-
-Example:
+4. Register the plugin via `plugin_registry.register(MyPlugin())`.
 
 ```python
 from app.plugins.manifest import PluginManifest
 from app.models.sources import SourceQuery, SourceDocumentRef
 
-class CustomSourcePlugin:
+class BloombergConnectorPlugin:
     manifest = PluginManifest(
-        plugin_id="custom_source",
-        display_name="Custom Data Connector",
+        plugin_id="bloomberg_terminal",
+        display_name="Bloomberg Data Connector",
         version="1.0.0",
         api_version="1.0",
         plugin_type="source_connector",
-        capabilities=["sec.filings.search", "sec.filings.fetch"],
+        capabilities=["market.pricing.fetch", "market.estimates.fetch"],
     )
 
     def resolve_issuer(self, identifier: str): ...
@@ -92,95 +222,110 @@ class CustomSourcePlugin:
 
 ---
 
-## 4. Getting Started
+## 5. Getting Started & Local Installation
 
 ### Prerequisites
 
-- macOS with Python 3.11+ (Python 3.12 recommended)
-- Swift 6.0+ (installed with Xcode / Command Line Tools)
-- [Ollama](https://ollama.ai) running locally for `gemma4:latest` (or mock mode for offline testing)
+- **macOS** (Tested on Apple Silicon & Intel)
+- **Python 3.12+**
+- **Swift 6.0+** (Included with Xcode or Apple Command Line Tools)
+- **Ollama** (Optional for local LLM inference with `gemma4:latest`; mock provider included for fast, offline testing)
 
-### Installation
+### Step-by-Step Setup
 
 ```bash
-# Clone and enter directory
-cd apollo-research
+# 1. Clone the repository
+git clone https://github.com/rahul02-dat/Apollo-research.git
+cd Apollo-research
 
-# Create / activate virtual environment
+# 2. Create and activate a Python 3.12 virtual environment
 python3.12 -m venv env
 source env/bin/activate
 
-# Install dependencies in editable mode
+# 3. Install Python dependencies in editable mode
 pip install -e ".[dev]"
 
-# Copy environment configuration
+# 4. Set up environment configuration
 cp .env.example .env
 ```
 
----
-
-## 5. Running the Application
-
 ### Step 1: Start the FastAPI Backend
+
+Run the FastAPI backend on port 8000:
 
 ```bash
 ./env/bin/uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The API will be available at `http://localhost:8000` with interactive OpenAPI docs at `http://localhost:8000/docs`.
+- API Base URL: `http://localhost:8000`
+- Interactive OpenAPI Docs: `http://localhost:8000/docs`
 
 ### Step 2: Start the Swift Web Dashboard
 
-In a new terminal window:
+In a separate terminal window, launch the high-performance Swift HTTP server:
 
 ```bash
 cd frontend
 swift run ApolloDashboard
 ```
 
-The Swift Web Dashboard will be live at **`http://localhost:3000`**.
+- Swift Web Dashboard URL: **`http://localhost:3000`**
 
 ---
 
-## 6. Demonstrated End-to-End Workflow
+## 6. Automated Acceptance Test Suite (38/38 Passing)
 
-1. Open `http://localhost:3000` in your browser.
-2. Enter a ticker symbol (e.g. `MSFT`, `AAPL`, or `NVDA`) and submit the research form.
-3. Apollo resolves the issuer to its official CIK, generates a 5-section research itinerary, and pauses at the **Human Approval Gate**.
-4. Review the proposed questions, then click **Approve Itinerary**.
-5. Athena retrieves official filings and XBRL metrics; Hermes evaluates question coverage and performs targeted follow-ups if gaps exist.
-6. The two-stage synthesis pipeline drafts each section and validates all factual claims.
-7. Click **Download PDF Report** to view the publication-grade PDF with clickable inline SEC citations and a primary-source bibliography.
-
----
-
-## 7. Automated Acceptance Tests (AT-01 to AT-17)
-
-Run the full automated test suite:
+Apollo includes a 100% automated test suite validating every architectural boundary, recovery path, security constraint, and business invariant:
 
 ```bash
 ./env/bin/pytest tests/ -v
 ```
 
-### Acceptance Test Matrix
+### Complete Test Verification Matrix
 
-| ID | Test Suite | Description | Status |
+| Test Suite File | Test Identifier | Acceptance Criteria Verified | Status |
 |---|---|---|---|
-| **AT-01** | `test_issuer_resolution.py` | Valid ticker resolves to CIK; invalid ticker fails safely | **PASSED** |
-| **AT-02** | `test_sec_retrieval.py` | Filing metadata and canonical SEC link are stored | **PASSED** |
-| **AT-03** | `test_coverage_and_gaps.py` | Every supported question has validated evidence | **PASSED** |
-| **AT-04** | `test_coverage_and_gaps.py` | Seeded missing evidence causes targeted follow-up & reevaluation | **PASSED** |
-| **AT-05** | `test_coverage_and_gaps.py` | Workflow stops at max follow-up rounds and exposes unresolved gaps | **PASSED** |
-| **AT-06** | `test_human_approval.py` | Graph pauses for plan approval and resumes correctly via thread ID | **PASSED** |
-| **AT-07** | `test_financial_context.py` | Decimal values, currencies, and reporting periods are preserved | **PASSED** |
-| **AT-08** | `test_citation_validation.py` | Missing or fabricated evidence IDs are deterministically rejected | **PASSED** |
-| **AT-09** | `test_two_stage_synthesis.py` | Section drafts exist independently before report assembly | **PASSED** |
-| **AT-10** | `test_incomplete_completion.py` | Unresolved required question prevents `COMPLETE` status | **PASSED** |
-| **AT-11** | `test_pdf_exporter.py` | PDF artifact opens and contains clickable links & bibliography | **PASSED** |
-| **AT-12** | `test_error_recovery.py` | Simulated 429/timeout produces bounded retries and safe failure | **PASSED** |
-| **AT-13** | `test_plugin_system.py` | Missing method, invalid manifest, or incompatible API is rejected | **PASSED** |
-| **AT-14** | `test_plugin_system.py` | Fake source plugin can substitute SEC without modifying graph code | **PASSED** |
-| **AT-15** | `test_plugin_system.py` | Plugin cannot execute undeclared or ungranted capabilities | **PASSED** |
-| **AT-16** | `test_plugin_system.py` | Malformed plugin response is contained without corrupting state | **PASSED** |
-| **AT-17** | `test_plugin_system.py` | Alternative exporter consumes validated report model without synthesis edits | **PASSED** |
-| **Integration** | `test_end_to_end_workflow.py` | End-to-end slice with fixture and live SEC connectivity | **PASSED** |
+| `test_issuer_resolution.py` | `test_at01_valid_issuer_resolution` | Resolves standard tickers (AAPL, MSFT) to official 10-digit SEC CIK | **PASSED** |
+| `test_issuer_resolution.py` | `test_at01_invalid_issuer_fails_safely` | Invalid/delisted tickers fail safely with clear error diagnostics | **PASSED** |
+| `test_sec_retrieval.py` | `test_at02_primary_source_retrieval` | Stores canonical SEC EDGAR URL, accession number, and raw content | **PASSED** |
+| `test_coverage_and_gaps.py` | `test_at03_question_coverage` | Attaches valid primary-source evidence for every itinerary question | **PASSED** |
+| `test_coverage_and_gaps.py` | `test_at04_gap_recovery` | Missing evidence triggers Hermes follow-up retrieval loop | **PASSED** |
+| `test_coverage_and_gaps.py` | `test_at05_bounded_autonomy` | Halts execution at max follow-up rounds (3) and exposes open gaps | **PASSED** |
+| `test_human_approval.py` | `test_at06_human_approval_pause_and_resume` | Graph suspends at approval gate and resumes cleanly upon approval | **PASSED** |
+| `test_financial_context.py` | `test_at07_financial_context_preservation` | Preserves Decimal math, currency units, and fiscal period boundaries | **PASSED** |
+| `test_citation_validation.py` | `test_at08_citation_integrity` | Rejects fabricated citations; enforces valid evidence ID provenance | **PASSED** |
+| `test_two_stage_synthesis.py` | `test_at09_two_stage_synthesis` | Section drafts exist independently before overall report assembly | **PASSED** |
+| `test_incomplete_completion.py` | `test_at10_unresolved_question_prevents_complete` | Unresolved required question deterministically prevents `COMPLETE` | **PASSED** |
+| `test_pdf_exporter.py` | `test_at11_pdf_generation_with_clickable_citations` | ReportLab PDF generates with clickable SEC URLs and bibliography | **PASSED** |
+| `test_pdf_exporter.py` | `test_pdf_generation_with_vector_charts` | Embeds high-resolution vector bar charts and ratio summary tables | **PASSED** |
+| `test_error_recovery.py` | `test_at12_rate_limit_backoff_and_bounded_retry` | Handles HTTP 429 rate limits with exponential backoff and retry bounds | **PASSED** |
+| `test_error_recovery.py` | `test_at12_network_timeout_bounded_retry` | Recovers from intermittent socket timeouts without crashing workflow | **PASSED** |
+| `test_financial_analytics.py` | `test_financial_analytics_computations` | Validates YoY revenue growth, operating margin, and leverage ratios | **PASSED** |
+| `test_financial_analytics.py` | `test_multi_year_trend_analysis_and_cagr` | Computes 3-5 year CAGR metrics and assigns trend classifications | **PASSED** |
+| `test_material_events_and_transcripts.py` | `test_form_8k_material_events_parsing` | Form 8-K parser correctly categorizes Items 1.01, 2.02, 5.02, and 7.01 | **PASSED** |
+| `test_material_events_and_transcripts.py` | `test_form_4_insider_transactions_parsing` | Form 4 parser extracts officer/director acquisitions, sales, & shares | **PASSED** |
+| `test_material_events_and_transcripts.py` | `test_earnings_transcripts_and_management_guidance` | Extracts management commentary and forward guidance targets | **PASSED** |
+| `test_material_events_and_transcripts.py` | `test_athena_integration_with_phase4_plugins` | Athena agent dispatches to material events and transcript plugins | **PASSED** |
+| `test_material_events_and_transcripts.py` | `test_pdf_export_with_events_and_insiders` | Renders corporate governance and material event sections in PDF | **PASSED** |
+| `test_persistence_and_auth.py` | `test_durable_sqlite_persistence_across_instances` | Persists runs, evidence, and audit logs across server reboots | **PASSED** |
+| `test_persistence_and_auth.py` | `test_multi_tenant_workspace_scoping` | Enforces strict data isolation between separate customer workspaces | **PASSED** |
+| `test_persistence_and_auth.py` | `test_cryptographic_token_generation_and_tamper_detection` | Generates HMAC-SHA256 JWTs and detects signature tampering | **PASSED** |
+| `test_persistence_and_auth.py` | `test_auth_api_routes_and_workspace_lifecycle` | Validates `/api/auth/token` issuing and workspace creation APIs | **PASSED** |
+| `test_persistence_and_auth.py` | `test_workspace_isolation_in_api` | Returns HTTP 403 when attempting cross-workspace unauthorized access | **PASSED** |
+| `test_plugin_system.py` | `test_at13_plugin_contract_and_manifest_validation` | Validates method signatures and rejects invalid plugin manifests | **PASSED** |
+| `test_plugin_system.py` | `test_at14_plugin_substitution` | Substitutes fake source connector without modifying core engine | **PASSED** |
+| `test_plugin_system.py` | `test_at15_plugin_permission_enforcement` | Blocks plugins from executing undeclared capabilities | **PASSED** |
+| `test_plugin_system.py` | `test_at16_plugin_failure_containment` | Isolates misbehaving plugins without state corruption | **PASSED** |
+| `test_plugin_system.py` | `test_at17_exporter_substitution` | Alternative Markdown exporter consumes validated report models | **PASSED** |
+| `test_workflow_streaming.py` | `test_event_broadcaster_pub_sub` | Validates real-time broadcast of engine events to subscribers | **PASSED** |
+| `test_workflow_streaming.py` | `test_event_broadcaster_history_replay` | Ensures late-joining clients receive full prior execution logs | **PASSED** |
+| `test_workflow_streaming.py` | `test_sse_endpoint_validation` | Validates the HTTP SSE streaming endpoint protocol | **PASSED** |
+| `test_workflow_streaming.py` | `test_workflow_async_execution_with_streaming` | Validates end-to-end async execution with live SSE stream output | **PASSED** |
+| `test_end_to_end_workflow.py` | `test_end_to_end_workflow_with_fake_source` | Full vertical slice validation (plan -> approval -> synthesis -> PDF) | **PASSED** |
+| `test_end_to_end_workflow.py` | `test_live_sec_integration_if_available` | Live SEC EDGAR integration with real HTTP connectivity | **PASSED** |
+
+---
+
+## 7. License
+
+Apollo is released under the **MIT License**. See `LICENSE` for details.
