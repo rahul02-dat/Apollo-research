@@ -11,3 +11,4 @@ reports/
 frontend/.build/
 .DS_Store
 docs/
+*.db-*
