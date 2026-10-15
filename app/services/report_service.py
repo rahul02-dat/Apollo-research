@@ -119,6 +119,12 @@ class ReportService:
 
         executive_summary = "Executive Summary\n\n" + "\n\n".join(exec_summary_parts)
 
+        # Compute quantitative financial metrics and charts
+        all_evidence = self.registry.list_evidence()
+        from app.plugins.builtin.financial_analytics.plugin import FinancialAnalyticsPlugin
+        analytics_plugin = getattr(self.synthesis_strategy, "_analytics_plugin", None) or FinancialAnalyticsPlugin()
+        financial_metrics = analytics_plugin.compute_metrics(all_evidence)
+
         report = FinalReport(
             report_id=f"RPT_{run.run_id[:8]}",
             run_id=run.run_id,
@@ -132,6 +138,7 @@ class ReportService:
             sections=section_drafts,
             bibliography=bibliography,
             unresolved_limitations=limitations,
+            financial_metrics=financial_metrics,
             is_complete=can_complete,
             validation_passed=claims_result.is_valid,
         )

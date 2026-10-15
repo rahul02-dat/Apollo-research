@@ -361,6 +361,56 @@ let dashboardHTML = """
             text-decoration: underline;
         }
 
+        .visual-analytics-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .charts-flex-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.25rem;
+            margin-top: 0.75rem;
+            min-width: 0;
+        }
+
+        .visual-chart-box {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 1rem;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .cagr-badge {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 20px;
+            padding: 3px 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .metric-pill {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 0.35rem 0.65rem;
+            font-size: 0.8rem;
+            color: #E2E8F0;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
         .tab-btn {
             background: transparent;
             border: none;
@@ -732,6 +782,169 @@ let dashboardHTML = """
             }
         }
 
+        function renderRevenueChartSVG(chartData) {
+            if (!chartData || !chartData.labels || !chartData.values_in_billions || chartData.labels.length === 0) return '';
+            const labels = chartData.labels;
+            const values = chartData.values_in_billions;
+            const unit = chartData.unit || 'USD Billions';
+            const cagr = chartData.cagr_formatted || '';
+            const maxVal = Math.max(...values, 1);
+
+            const svgWidth = 440;
+            const svgHeight = 170;
+            const padX = 35;
+            const padTop = 28;
+            const padBottom = 32;
+            const chartH = svgHeight - padTop - padBottom;
+            const chartW = svgWidth - (padX * 2);
+
+            const n = labels.length;
+            const barW = Math.min(48, chartW / (n * 1.8));
+            const gap = (chartW - (n * barW)) / (n + 1);
+
+            let barsSVG = '';
+            labels.forEach((lbl, i) => {
+                const val = values[i];
+                const barH = Math.max(8, (val / maxVal) * chartH);
+                const x = padX + gap + i * (barW + gap);
+                const y = padTop + (chartH - barH);
+
+                barsSVG += `
+                    <g>
+                        <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="4" fill="url(#revGrad)" stroke="#38BDF8" stroke-width="1" />
+                        <text x="${x + barW / 2}" y="${y - 6}" text-anchor="middle" fill="#F1F5F9" font-size="10" font-weight="600">$${val}B</text>
+                        <text x="${x + barW / 2}" y="${padTop + chartH + 16}" text-anchor="middle" fill="#94A3B8" font-size="10">${lbl}</text>
+                    </g>
+                `;
+            });
+
+            return `
+                <div class="visual-chart-box">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h5 style="color: var(--text-primary); font-size: 0.95rem; margin: 0;">${chartData.title || 'Annual Revenue Trend'}</h5>
+                        ${cagr ? `<span class="cagr-badge">CAGR: ${cagr}</span>` : ''}
+                    </div>
+                    <svg viewBox="0 0 ${svgWidth} ${svgHeight}" style="width: 100%; height: auto; max-height: 190px; overflow: visible;">
+                        <defs>
+                            <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.9" />
+                                <stop offset="100%" stop-color="#1E40AF" stop-opacity="0.6" />
+                            </linearGradient>
+                        </defs>
+                        <line x1="${padX - 5}" y1="${padTop + chartH}" x2="${svgWidth - padX + 5}" y2="${padTop + chartH}" stroke="#334155" stroke-width="1" />
+                        ${barsSVG}
+                    </svg>
+                </div>
+            `;
+        }
+
+        function renderMarginChartSVG(chartData) {
+            if (!chartData || !chartData.labels || !chartData.operating_margins || chartData.labels.length === 0) return '';
+            const labels = chartData.labels;
+            const opMargins = chartData.operating_margins;
+            const netMargins = chartData.net_margins || [];
+
+            const allM = [...opMargins, ...netMargins].filter(v => v !== null && v !== undefined);
+            const maxVal = Math.max(...allM, 50);
+
+            const svgWidth = 440;
+            const svgHeight = 170;
+            const padX = 35;
+            const padTop = 28;
+            const padBottom = 32;
+            const chartH = svgHeight - padTop - padBottom;
+            const chartW = svgWidth - (padX * 2);
+
+            const n = labels.length;
+            const groupW = Math.min(65, chartW / (n * 1.5));
+            const barW = groupW / 2.3;
+            const gap = (chartW - (n * groupW)) / (n + 1);
+
+            let barsSVG = '';
+            labels.forEach((lbl, i) => {
+                const gx = padX + gap + i * (groupW + gap);
+                const opVal = opMargins[i];
+                const netVal = netMargins[i];
+
+                if (opVal !== null && opVal !== undefined) {
+                    const opH = Math.max(5, (opVal / maxVal) * chartH);
+                    const opY = padTop + (chartH - opH);
+                    barsSVG += `
+                        <rect x="${gx}" y="${opY}" width="${barW}" height="${opH}" rx="3" fill="#38BDF8" />
+                        <text x="${gx + barW / 2}" y="${opY - 5}" text-anchor="middle" fill="#38BDF8" font-size="9" font-weight="600">${opVal}%</text>
+                    `;
+                }
+
+                if (netVal !== null && netVal !== undefined) {
+                    const netH = Math.max(5, (netVal / maxVal) * chartH);
+                    const netY = padTop + (chartH - netH);
+                    barsSVG += `
+                        <rect x="${gx + barW + 3}" y="${netY}" width="${barW}" height="${netH}" rx="3" fill="#34D399" />
+                        <text x="${gx + barW + 3 + barW / 2}" y="${netY - 5}" text-anchor="middle" fill="#34D399" font-size="9" font-weight="600">${netVal}%</text>
+                    `;
+                }
+
+                barsSVG += `<text x="${gx + groupW / 2}" y="${padTop + chartH + 16}" text-anchor="middle" fill="#94A3B8" font-size="10">${lbl}</text>`;
+            });
+
+            return `
+                <div class="visual-chart-box">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h5 style="color: var(--text-primary); font-size: 0.95rem; margin: 0;">Profit Margin Trajectory</h5>
+                        <div style="display: flex; gap: 0.75rem; font-size: 0.75rem;">
+                            <span style="display: flex; align-items: center; gap: 4px; color: #38BDF8;"><span style="display:inline-block; width:8px; height:8px; background:#38BDF8; border-radius:2px;"></span> Operating</span>
+                            <span style="display: flex; align-items: center; gap: 4px; color: #34D399;"><span style="display:inline-block; width:8px; height:8px; background:#34D399; border-radius:2px;"></span> Net Margin</span>
+                        </div>
+                    </div>
+                    <svg viewBox="0 0 ${svgWidth} ${svgHeight}" style="width: 100%; height: auto; max-height: 190px; overflow: visible;">
+                        <line x1="${padX - 5}" y1="${padTop + chartH}" x2="${svgWidth - padX + 5}" y2="${padTop + chartH}" stroke="#334155" stroke-width="1" />
+                        ${barsSVG}
+                    </svg>
+                </div>
+            `;
+        }
+
+        function renderCapitalStructureSVG(chartData, ratios) {
+            if (!chartData || !chartData.labels || !chartData.values_in_billions || chartData.labels.length < 2) return '';
+            const labels = chartData.labels;
+            const values = chartData.values_in_billions;
+            const maxVal = Math.max(...values, 1);
+
+            const colors = ['#38BDF8', '#F87171', '#34D399'];
+            let barsHTML = '';
+
+            labels.forEach((lbl, i) => {
+                const val = values[i];
+                const pct = Math.min(100, Math.max(6, (val / maxVal) * 100));
+                const color = colors[i % colors.length];
+                barsHTML += `
+                    <div style="margin-bottom: 0.65rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.25rem;">
+                            <span style="color: var(--text-secondary);">${lbl}</span>
+                            <strong style="color: #F1F5F9;">$${val}B</strong>
+                        </div>
+                        <div style="background: var(--bg-surface); border-radius: 4px; height: 9px; width: 100%; overflow: hidden;">
+                            <div style="background: ${color}; width: ${pct}%; height: 100%; border-radius: 4px; transition: width 0.5s ease;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            const debtAssets = ratios && ratios.debt_to_assets ? ratios.debt_to_assets.formatted : null;
+            const cashLiab = ratios && ratios.cash_to_liabilities ? ratios.cash_to_liabilities.formatted : null;
+
+            return `
+                <div class="visual-chart-box">
+                    <h5 style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 0.75rem;">Capital Structure & Liquidity</h5>
+                    ${barsHTML}
+                    <div style="display: flex; gap: 1rem; margin-top: 0.85rem; border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; font-size: 0.8rem;">
+                        ${debtAssets ? `<div><span style="color: var(--text-muted);">Debt-to-Assets:</span> <strong style="color: #38BDF8;">${debtAssets}</strong></div>` : ''}
+                        ${cashLiab ? `<div><span style="color: var(--text-muted);">Cash Coverage:</span> <strong style="color: #34D399;">${cashLiab}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
         async function loadReport(runId) {
             try {
                 const res = await fetch(`${API_BASE}/api/runs/${runId}/report`);
@@ -788,6 +1001,40 @@ let dashboardHTML = """
                         ${formatMarkdownLinks(report.executive_summary)}
                     </div>
                 </div>`;
+
+                // Visual Analytics & Multi-Year Trends (Phase 2 Charts)
+                if (report.financial_metrics && report.financial_metrics.charts) {
+                    const fm = report.financial_metrics;
+                    const ch = fm.charts || {};
+                    const revChartHTML = renderRevenueChartSVG(ch.revenue_trend);
+                    const marginChartHTML = renderMarginChartSVG(ch.margin_trend);
+                    const capChartHTML = renderCapitalStructureSVG(ch.capital_structure, fm.ratios);
+
+                    if (revChartHTML || marginChartHTML || capChartHTML) {
+                        html += `<div class="visual-analytics-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.5rem;">
+                                <h4 style="color: var(--accent-cyan); font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                                    <span>📊 Financial Trends & Interactive Visual Analytics</span>
+                                </h4>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">Deterministic XBRL Multi-Period Modeling</span>
+                            </div>`;
+
+                        if (fm.summary_highlights && fm.summary_highlights.length > 0) {
+                            html += `<div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">`;
+                            fm.summary_highlights.forEach(h => {
+                                html += `<span class="metric-pill">📈 ${h}</span>`;
+                            });
+                            html += `</div>`;
+                        }
+
+                        html += `<div class="charts-flex-grid">
+                            ${revChartHTML}
+                            ${marginChartHTML}
+                            ${capChartHTML}
+                        </div>
+                        </div>`;
+                    }
+                }
 
                 // Sections
                 report.sections.forEach((sec, idx) => {

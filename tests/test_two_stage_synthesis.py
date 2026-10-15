@@ -99,3 +99,5 @@ def test_at09_two_stage_synthesis(evidence_registry: EvidenceRegistry) -> None:
     assert final_report.bibliography[0].source_id == "SRC_10K_2024"
     assert "Executive Summary" in final_report.executive_summary
     assert "https://sec.gov" in final_report.executive_summary
+    assert "metrics" in final_report.financial_metrics
+    assert "latest_revenue" in final_report.financial_metrics["metrics"]

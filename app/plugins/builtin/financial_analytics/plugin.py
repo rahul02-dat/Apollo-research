@@ -43,15 +43,19 @@ class FinancialAnalyticsPlugin:
         computed: dict[str, Any] = {
             "metrics": {},
             "ratios": {},
+            "trends": {},
+            "charts": {},
             "summary_highlights": [],
         }
 
-        # 1. Revenue & Growth
+        # 1. Revenue & Multi-Year Growth (YoY + CAGR)
         rev_records = facts_by_tag.get("Revenues") or facts_by_tag.get("RevenueFromContractWithCustomerExcludingAssessedTax", [])
         latest_rev: Decimal | None = None
         prior_rev: Decimal | None = None
 
         if rev_records:
+            # Chronological series (earliest to latest)
+            rev_chrono = self._extract_annual_series(rev_records)
             latest_rev = rev_records[0].value
             computed["metrics"]["latest_revenue"] = {
                 "value": str(latest_rev),
@@ -59,6 +63,8 @@ class FinancialAnalyticsPlugin:
                 "period": rev_records[0].period_end,
                 "evidence_id": rev_records[0].evidence_id,
             }
+
+            # Prior year comparison
             if len(rev_records) > 1:
                 prior_rev = rev_records[1].value
                 computed["metrics"]["prior_revenue"] = {
@@ -79,7 +85,60 @@ class FinancialAnalyticsPlugin:
                         f"YoY Revenue Growth: {sign}{yoy_growth_rounded}% (from {self._format_currency(prior_rev)} to {self._format_currency(latest_rev)})"
                     )
 
-        # 2. Operating Income & Operating Margin
+            # Multi-Year Trend & CAGR (if >= 2 periods)
+            if len(rev_chrono) >= 2:
+                series_data = []
+                for idx, r in enumerate(rev_chrono):
+                    val = r.value or Decimal("0")
+                    growth_from_prior = None
+                    if idx > 0 and rev_chrono[idx - 1].value and rev_chrono[idx - 1].value != 0:
+                        prev_v = rev_chrono[idx - 1].value
+                        g = ((val - prev_v) / abs(prev_v)) * Decimal("100")
+                        growth_from_prior = float(g.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+                    p_label = r.fiscal_period or self._extract_year_label(r.period_end)
+                    series_data.append({
+                        "period": r.period_end or "Unknown",
+                        "label": p_label,
+                        "value": float(val),
+                        "formatted": self._format_currency(val),
+                        "yoy_growth_pct": growth_from_prior,
+                        "evidence_id": r.evidence_id,
+                    })
+
+                initial_rec = rev_chrono[0]
+                final_rec = rev_chrono[-1]
+                n_years = self._calculate_year_span(initial_rec.period_end, final_rec.period_end, len(rev_chrono) - 1)
+
+                cagr_val, cagr_str = self._compute_cagr(initial_rec.value or Decimal("0"), final_rec.value or Decimal("0"), n_years)
+
+                computed["trends"]["revenue_cagr"] = {
+                    "years": n_years,
+                    "cagr_pct": float(cagr_val) if cagr_val is not None else None,
+                    "formatted": cagr_str,
+                    "start_period": initial_rec.period_end,
+                    "end_period": final_rec.period_end,
+                    "start_value": self._format_currency(initial_rec.value or Decimal("0")),
+                    "end_value": self._format_currency(final_rec.value or Decimal("0")),
+                }
+                computed["trends"]["revenue_series"] = series_data
+
+                if cagr_val is not None:
+                    computed["summary_highlights"].append(
+                        f"{n_years}-Year Revenue CAGR: {cagr_str} (from {self._format_currency(initial_rec.value or Decimal('0'))} in {self._extract_year_label(initial_rec.period_end)} to {self._format_currency(final_rec.value or Decimal('0'))} in {self._extract_year_label(final_rec.period_end)})"
+                    )
+
+                # Chart dataset for revenue
+                computed["charts"]["revenue_trend"] = {
+                    "title": f"Annual Revenue Trend ({n_years}-Year)",
+                    "labels": [s["label"] for s in series_data],
+                    "raw_values": [s["value"] for s in series_data],
+                    "values_in_billions": [self._to_billions(s["value"]) for s in series_data],
+                    "unit": "USD Billions" if any(abs(s["value"]) >= 1e9 for s in series_data) else "USD Millions",
+                    "cagr_formatted": cagr_str,
+                }
+
+        # 2. Operating Income & Operating Margin Multi-Year
         op_inc_records = facts_by_tag.get("OperatingIncomeLoss", [])
         if op_inc_records:
             latest_op_inc = op_inc_records[0].value
@@ -98,7 +157,7 @@ class FinancialAnalyticsPlugin:
                 }
                 computed["summary_highlights"].append(f"Operating Margin: {op_margin_rounded}%")
 
-        # 3. Net Income & Net Profit Margin
+        # 3. Net Income & Net Profit Margin Multi-Year
         net_inc_records = facts_by_tag.get("NetIncomeLoss", [])
         if net_inc_records:
             latest_net_inc = net_inc_records[0].value
@@ -116,6 +175,39 @@ class FinancialAnalyticsPlugin:
                     "formatted": f"{net_margin_rounded}%",
                 }
                 computed["summary_highlights"].append(f"Net Profit Margin: {net_margin_rounded}%")
+
+        # Margin Multi-Year Series & Chart
+        if rev_records:
+            rev_chrono = self._extract_annual_series(rev_records)
+            op_by_period = {r.period_end: r.value for r in self._extract_annual_series(op_inc_records) if r.period_end}
+            net_by_period = {r.period_end: r.value for r in self._extract_annual_series(net_inc_records) if r.period_end}
+
+            margin_series = []
+            for r in rev_chrono:
+                p = r.period_end or ""
+                p_label = r.fiscal_period or self._extract_year_label(p)
+                r_val = r.value or Decimal("0")
+                if r_val > 0:
+                    op_v = op_by_period.get(p)
+                    net_v = net_by_period.get(p)
+                    op_m = float(((op_v / r_val) * Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if op_v is not None else None
+                    net_m = float(((net_v / r_val) * Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if net_v is not None else None
+                    margin_series.append({
+                        "period": p,
+                        "label": p_label,
+                        "operating_margin_pct": op_m,
+                        "net_margin_pct": net_m,
+                    })
+
+            if margin_series:
+                computed["trends"]["margin_series"] = margin_series
+                computed["charts"]["margin_trend"] = {
+                    "title": "Operating & Net Profit Margin Trajectory",
+                    "labels": [m["label"] for m in margin_series],
+                    "operating_margins": [m["operating_margin_pct"] for m in margin_series],
+                    "net_margins": [m["net_margin_pct"] for m in margin_series],
+                    "unit": "%",
+                }
 
         # 4. Balance Sheet: Assets, Liabilities, and Cash
         assets_records = facts_by_tag.get("Assets", [])
@@ -159,7 +251,84 @@ class FinancialAnalyticsPlugin:
                 "formatted": f"{cash_coverage}x",
             }
 
+        # Balance sheet capital structure chart
+        if latest_assets is not None and latest_liab is not None:
+            computed["charts"]["capital_structure"] = {
+                "title": "Capital Structure & Liquidity Breakdown",
+                "labels": ["Total Assets", "Total Liabilities", "Cash & Equivalents"],
+                "raw_values": [
+                    float(latest_assets),
+                    float(latest_liab),
+                    float(latest_cash or Decimal("0")),
+                ],
+                "values_in_billions": [
+                    self._to_billions(latest_assets),
+                    self._to_billions(latest_liab),
+                    self._to_billions(latest_cash or Decimal("0")),
+                ],
+                "unit": "USD Billions",
+            }
+
         return computed
+
+    @staticmethod
+    def _to_billions(val: Any) -> float:
+        if val is None:
+            return 0.0
+        try:
+            d = Decimal(str(val)) / Decimal("1000000000")
+            return float(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        except Exception:
+            return 0.0
+
+    @classmethod
+    def _extract_annual_series(cls, records: list[EvidenceRecord]) -> list[EvidenceRecord]:
+        """Extracts unique annual periods sorted chronologically (earliest to latest)."""
+        seen_dates: set[str] = set()
+        unique_records: list[EvidenceRecord] = []
+        for r in records:
+            p_end = r.period_end or ""
+            if p_end and p_end not in seen_dates:
+                seen_dates.add(p_end)
+                unique_records.append(r)
+        unique_records.sort(key=lambda r: (r.period_end or "", r.period_start or ""))
+        return unique_records
+
+    @staticmethod
+    def _extract_year_label(period_date: str | None) -> str:
+        if not period_date:
+            return "FY"
+        return period_date[:4]
+
+    @staticmethod
+    def _calculate_year_span(start_date: str | None, end_date: str | None, default_span: int) -> int:
+        if start_date and end_date and len(start_date) >= 4 and len(end_date) >= 4:
+            try:
+                s_yr = int(start_date[:4])
+                e_yr = int(end_date[:4])
+                span = e_yr - s_yr
+                if span > 0:
+                    return span
+            except ValueError:
+                pass
+        return max(1, default_span)
+
+    @staticmethod
+    def _compute_cagr(initial_val: Decimal, final_val: Decimal, periods: int) -> tuple[Decimal | None, str]:
+        """Computes Compound Annual Growth Rate over `periods` years."""
+        if periods <= 0:
+            return None, "N/A"
+        if initial_val <= 0 or final_val <= 0:
+            return None, "N/A (non-positive base)"
+        try:
+            ratio = float(final_val / initial_val)
+            cagr_float = (ratio ** (1.0 / periods)) - 1.0
+            cagr_dec = Decimal(str(cagr_float * 100.0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            sign = "+" if cagr_dec > 0 else ""
+            return cagr_dec, f"{sign}{cagr_dec}%"
+        except Exception as e:
+            logger.warning("Error computing CAGR: %s", e)
+            return None, "N/A"
 
     @staticmethod
     def _format_currency(val: Decimal) -> str:

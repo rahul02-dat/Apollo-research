@@ -43,6 +43,7 @@ class FinalReport(BaseModel):
     sections: list[SectionDraft] = Field(default_factory=list)
     bibliography: list[BibliographyItem] = Field(default_factory=list)
     unresolved_limitations: list[str] = Field(default_factory=list)
+    financial_metrics: dict[str, Any] = Field(default_factory=dict)
     is_complete: bool = False
     validation_passed: bool = False
 
