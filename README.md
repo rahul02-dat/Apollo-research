@@ -4,7 +4,6 @@
 [![Swift 6.0](https://img.shields.io/badge/swift-6.0-orange.svg)](https://www.swift.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-purple.svg)](https://langchain-ai.github.io/langgraph/)
-[![Tests Passing](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **Apollo is an enterprise-grade, autonomous financial research platform designed for equity research analysts, institutional investors, hedge funds, and investment committees.**
@@ -34,8 +33,7 @@
    - [Step-by-Step Setup](#step-by-step-setup)
    - [Starting the FastAPI Backend](#step-1-start-the-fastapi-backend)
    - [Starting the Swift Web Dashboard](#step-2-start-the-swift-web-dashboard)
-6. [Automated Acceptance Test Suite (38/38 Passing)](#6-automated-acceptance-test-suite-3838-passing)
-7. [License](#7-license)
+6. [License](#6-license)
 
 ---
 
@@ -229,7 +227,7 @@ class BloombergConnectorPlugin:
 - **macOS** (Tested on Apple Silicon & Intel)
 - **Python 3.12+**
 - **Swift 6.0+** (Included with Xcode or Apple Command Line Tools)
-- **Ollama** (Optional for local LLM inference with `gemma4:latest`; mock provider included for fast, offline testing)
+- **Ollama** (Optional for local LLM inference with `gemma4:latest`; mock provider included for fast, offline operation)
 
 ### Step-by-Step Setup
 
@@ -273,59 +271,6 @@ swift run ApolloDashboard
 
 ---
 
-## 6. Automated Acceptance Test Suite (38/38 Passing)
-
-Apollo includes a 100% automated test suite validating every architectural boundary, recovery path, security constraint, and business invariant:
-
-```bash
-./env/bin/pytest tests/ -v
-```
-
-### Complete Test Verification Matrix
-
-| Test Suite File | Test Identifier | Acceptance Criteria Verified | Status |
-|---|---|---|---|
-| `test_issuer_resolution.py` | `test_at01_valid_issuer_resolution` | Resolves standard tickers (AAPL, MSFT) to official 10-digit SEC CIK | **PASSED** |
-| `test_issuer_resolution.py` | `test_at01_invalid_issuer_fails_safely` | Invalid/delisted tickers fail safely with clear error diagnostics | **PASSED** |
-| `test_sec_retrieval.py` | `test_at02_primary_source_retrieval` | Stores canonical SEC EDGAR URL, accession number, and raw content | **PASSED** |
-| `test_coverage_and_gaps.py` | `test_at03_question_coverage` | Attaches valid primary-source evidence for every itinerary question | **PASSED** |
-| `test_coverage_and_gaps.py` | `test_at04_gap_recovery` | Missing evidence triggers Hermes follow-up retrieval loop | **PASSED** |
-| `test_coverage_and_gaps.py` | `test_at05_bounded_autonomy` | Halts execution at max follow-up rounds (3) and exposes open gaps | **PASSED** |
-| `test_human_approval.py` | `test_at06_human_approval_pause_and_resume` | Graph suspends at approval gate and resumes cleanly upon approval | **PASSED** |
-| `test_financial_context.py` | `test_at07_financial_context_preservation` | Preserves Decimal math, currency units, and fiscal period boundaries | **PASSED** |
-| `test_citation_validation.py` | `test_at08_citation_integrity` | Rejects fabricated citations; enforces valid evidence ID provenance | **PASSED** |
-| `test_two_stage_synthesis.py` | `test_at09_two_stage_synthesis` | Section drafts exist independently before overall report assembly | **PASSED** |
-| `test_incomplete_completion.py` | `test_at10_unresolved_question_prevents_complete` | Unresolved required question deterministically prevents `COMPLETE` | **PASSED** |
-| `test_pdf_exporter.py` | `test_at11_pdf_generation_with_clickable_citations` | ReportLab PDF generates with clickable SEC URLs and bibliography | **PASSED** |
-| `test_pdf_exporter.py` | `test_pdf_generation_with_vector_charts` | Embeds high-resolution vector bar charts and ratio summary tables | **PASSED** |
-| `test_error_recovery.py` | `test_at12_rate_limit_backoff_and_bounded_retry` | Handles HTTP 429 rate limits with exponential backoff and retry bounds | **PASSED** |
-| `test_error_recovery.py` | `test_at12_network_timeout_bounded_retry` | Recovers from intermittent socket timeouts without crashing workflow | **PASSED** |
-| `test_financial_analytics.py` | `test_financial_analytics_computations` | Validates YoY revenue growth, operating margin, and leverage ratios | **PASSED** |
-| `test_financial_analytics.py` | `test_multi_year_trend_analysis_and_cagr` | Computes 3-5 year CAGR metrics and assigns trend classifications | **PASSED** |
-| `test_material_events_and_transcripts.py` | `test_form_8k_material_events_parsing` | Form 8-K parser correctly categorizes Items 1.01, 2.02, 5.02, and 7.01 | **PASSED** |
-| `test_material_events_and_transcripts.py` | `test_form_4_insider_transactions_parsing` | Form 4 parser extracts officer/director acquisitions, sales, & shares | **PASSED** |
-| `test_material_events_and_transcripts.py` | `test_earnings_transcripts_and_management_guidance` | Extracts management commentary and forward guidance targets | **PASSED** |
-| `test_material_events_and_transcripts.py` | `test_athena_integration_with_phase4_plugins` | Athena agent dispatches to material events and transcript plugins | **PASSED** |
-| `test_material_events_and_transcripts.py` | `test_pdf_export_with_events_and_insiders` | Renders corporate governance and material event sections in PDF | **PASSED** |
-| `test_persistence_and_auth.py` | `test_durable_sqlite_persistence_across_instances` | Persists runs, evidence, and audit logs across server reboots | **PASSED** |
-| `test_persistence_and_auth.py` | `test_multi_tenant_workspace_scoping` | Enforces strict data isolation between separate customer workspaces | **PASSED** |
-| `test_persistence_and_auth.py` | `test_cryptographic_token_generation_and_tamper_detection` | Generates HMAC-SHA256 JWTs and detects signature tampering | **PASSED** |
-| `test_persistence_and_auth.py` | `test_auth_api_routes_and_workspace_lifecycle` | Validates `/api/auth/token` issuing and workspace creation APIs | **PASSED** |
-| `test_persistence_and_auth.py` | `test_workspace_isolation_in_api` | Returns HTTP 403 when attempting cross-workspace unauthorized access | **PASSED** |
-| `test_plugin_system.py` | `test_at13_plugin_contract_and_manifest_validation` | Validates method signatures and rejects invalid plugin manifests | **PASSED** |
-| `test_plugin_system.py` | `test_at14_plugin_substitution` | Substitutes fake source connector without modifying core engine | **PASSED** |
-| `test_plugin_system.py` | `test_at15_plugin_permission_enforcement` | Blocks plugins from executing undeclared capabilities | **PASSED** |
-| `test_plugin_system.py` | `test_at16_plugin_failure_containment` | Isolates misbehaving plugins without state corruption | **PASSED** |
-| `test_plugin_system.py` | `test_at17_exporter_substitution` | Alternative Markdown exporter consumes validated report models | **PASSED** |
-| `test_workflow_streaming.py` | `test_event_broadcaster_pub_sub` | Validates real-time broadcast of engine events to subscribers | **PASSED** |
-| `test_workflow_streaming.py` | `test_event_broadcaster_history_replay` | Ensures late-joining clients receive full prior execution logs | **PASSED** |
-| `test_workflow_streaming.py` | `test_sse_endpoint_validation` | Validates the HTTP SSE streaming endpoint protocol | **PASSED** |
-| `test_workflow_streaming.py` | `test_workflow_async_execution_with_streaming` | Validates end-to-end async execution with live SSE stream output | **PASSED** |
-| `test_end_to_end_workflow.py` | `test_end_to_end_workflow_with_fake_source` | Full vertical slice validation (plan -> approval -> synthesis -> PDF) | **PASSED** |
-| `test_end_to_end_workflow.py` | `test_live_sec_integration_if_available` | Live SEC EDGAR integration with real HTTP connectivity | **PASSED** |
-
----
-
-## 7. License
+## 6. License
 
 Apollo is released under the **MIT License**. See `LICENSE` for details.
