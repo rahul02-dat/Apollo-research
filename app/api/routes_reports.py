@@ -1,10 +1,9 @@
-"""Report and PDF Download endpoints."""
-
 from pathlib import Path
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from app.api.auth import User, UserRole, get_current_user
+from app.api.auth import User, get_current_user, verify_user_workspace_access
+from app.config import settings
 from app.models.reports import FinalReport, ReportArtifact
 from app.services.workflow_manager import workflow_manager
 
@@ -20,7 +19,7 @@ def get_research_report(
     run = workflow_manager.store.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-    if current_user.role != UserRole.ADMIN and run.workspace_id != current_user.active_workspace_id:
+    if not verify_user_workspace_access(current_user, run.workspace_id):
         raise HTTPException(status_code=403, detail="Access denied to this workspace's report.")
 
     report = workflow_manager.store.get_report(run_id)
@@ -38,17 +37,22 @@ def download_report_pdf(
     run = workflow_manager.store.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-    if current_user.role != UserRole.ADMIN and run.workspace_id != current_user.active_workspace_id:
+    if not verify_user_workspace_access(current_user, run.workspace_id):
         raise HTTPException(status_code=403, detail="Access denied to this workspace's report.")
 
     artifact = workflow_manager.store.get_artifact(run_id)
     if not artifact or not Path(artifact.file_path).exists():
         raise HTTPException(status_code=404, detail=f"PDF report for run '{run_id}' not found.")
 
-    path = Path(artifact.file_path)
+    path = Path(artifact.file_path).resolve()
+    allowed_dir = settings.REPORT_OUTPUT_DIR.resolve()
+    if not path.is_relative_to(allowed_dir):
+        raise HTTPException(status_code=403, detail="Access denied: invalid artifact path location outside allowed directory.")
+
     return FileResponse(
         path=str(path),
         media_type="application/pdf",
         filename=path.name,
     )
+
 

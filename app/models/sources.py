@@ -17,6 +17,8 @@ class SourceQuery(BaseModel):
 class SourceDocumentRef(BaseModel):
     plugin_id: str
     source_id: str
+    run_id: str | None = None
+    workspace_id: str | None = None
     title: str
     url: str
     source_type: str = "SEC_FILING"
@@ -29,6 +31,8 @@ class SourceDocumentRef(BaseModel):
 
 class SourceDocument(BaseModel):
     source_id: str
+    run_id: str | None = None
+    workspace_id: str | None = None
     issuer_cik: str
     accession_number: str
     form_type: str

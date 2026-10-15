@@ -113,7 +113,18 @@ def verify_access_token(token: str) -> dict[str, Any] | None:
         return None
 
 
-# --- FastAPI Dependency ---
+# --- FastAPI Dependency & Workspace Access ---
+def verify_user_workspace_access(user: User, workspace_id: str) -> bool:
+    """Validates that the user has authorization for the specified tenant workspace."""
+    if not workspace_id:
+        return True
+    if user.role == UserRole.ADMIN:
+        return True
+    if user.active_workspace_id and user.active_workspace_id == workspace_id:
+        return True
+    return run_store.user_has_workspace_access(user.user_id, workspace_id)
+
+
 async def get_current_user(
     auth_creds: Annotated[HTTPAuthorizationCredentials | None, Depends(security_scheme)] = None,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
@@ -139,6 +150,7 @@ async def get_current_user(
                 role=UserRole(payload.get("role", "ANALYST")),
                 active_workspace_id=payload.get("workspace_id", "ws_default"),
             )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired bearer token")
 
     # 2. X-API-Key Header
     if x_api_key:
@@ -153,8 +165,8 @@ async def get_current_user(
             )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
 
-    # 3. Development / Local Fallback
-    if not settings.REQUIRE_AUTH:
+    # 3. Development / Local Fallback (Strictly isolated to non-production environments with REQUIRE_AUTH=False)
+    if not settings.REQUIRE_AUTH and not settings.is_production:
         user_data = run_store.get_user("usr_primary_analyst")
         if user_data:
             return User(
@@ -180,13 +192,34 @@ async def get_current_user(
 def login_for_token(req: LoginRequest) -> Any:
     """Exchanges an API key or registered email for a signed JWT access token."""
     user_data = None
-    if req.api_key:
+
+    if settings.is_production:
+        # Production mode: Email-only and unauthenticated empty logins are strictly eliminated
+        if not req.api_key:
+            if req.email:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Email-only login is disabled in production. Valid API key required.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Production authentication requires an API key.",
+            )
         user_data = run_store.get_user_by_api_key(req.api_key)
-    elif req.email:
-        user_data = run_store.get_user_by_email(req.email)
     else:
-        # Default dev user
-        user_data = run_store.get_user("usr_primary_analyst")
+        # Development mode: Support API key, email lookup, or default dev analyst
+        if req.api_key:
+            user_data = run_store.get_user_by_api_key(req.api_key)
+        elif req.email:
+            user_data = run_store.get_user_by_email(req.email)
+        elif not settings.REQUIRE_AUTH:
+            # Default dev user
+            user_data = run_store.get_user("usr_primary_analyst")
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication credentials required.",
+            )
 
     if not user_data:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")

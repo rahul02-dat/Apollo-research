@@ -31,12 +31,26 @@ class GapDetectionService:
         unresolved_count = 0
 
         for q in questions:
-            # Query registry for evidence linked to this question
-            evidence_records = registry.get_evidence_for_question(q.question_id)
+            # Query registry for evidence linked to this question scoped to run_id
+            evidence_records = registry.get_evidence_for_question(q.question_id, run_id=run_id)
             valid_evidence = [
                 e for e in evidence_records
                 if e.validation_status == EvidenceValidationStatus.VALID
             ]
+
+            # Validate that required evidence criteria are satisfied
+            if valid_evidence and q.expected_evidence:
+                criteria_met_evidence = []
+                for ev in valid_evidence:
+                    text_blob = f"{ev.locator} {ev.fact_name or ''} {ev.excerpt or ''}".lower()
+                    if any(
+                        crit.lower() in text_blob or any(w.lower() in text_blob for w in crit.lower().split() if len(w) > 4)
+                        for crit in q.expected_evidence
+                    ):
+                        criteria_met_evidence.append(ev)
+
+                # Only supported if criteria are actually met
+                valid_evidence = criteria_met_evidence
 
             q_copy = q.model_copy()
 

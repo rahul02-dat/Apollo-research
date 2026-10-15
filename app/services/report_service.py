@@ -64,7 +64,7 @@ class ReportService:
             all_claims.extend(d.claims)
 
         # 2. Validate all claims and citations deterministically
-        claims_result = ValidationService.validate_claims(all_claims, self.registry)
+        claims_result = ValidationService.validate_claims(all_claims, self.registry, run_id=run.run_id)
 
         # 3. Compile bibliography from all referenced sources
         used_source_ids = {s_id for d in section_drafts for s_id in d.source_ids}

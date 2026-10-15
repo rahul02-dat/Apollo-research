@@ -1,9 +1,7 @@
-"""Approval Checkpoint endpoints."""
-
 from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from app.api.auth import User, UserRole, get_current_user
+from app.api.auth import User, get_current_user, verify_user_workspace_access
 from app.models.approvals import ApprovalDecision, ApprovalEvent
 from app.models.research import ResearchRun
 from app.services.workflow_manager import workflow_manager
@@ -27,7 +25,7 @@ def submit_approval_decision(
     run = workflow_manager.store.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-    if current_user.role != UserRole.ADMIN and run.workspace_id != current_user.active_workspace_id:
+    if not verify_user_workspace_access(current_user, run.workspace_id):
         raise HTTPException(status_code=403, detail="Access denied to this workspace's research run.")
 
     try:
@@ -36,6 +34,7 @@ def submit_approval_decision(
             decision=request.decision,
             feedback=request.feedback,
             async_execution=request.async_execution,
+            approver_user_id=current_user.user_id,
         )
         return updated_run
     except KeyError as e:
@@ -53,8 +52,9 @@ def list_approval_events(
     run = workflow_manager.store.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-    if current_user.role != UserRole.ADMIN and run.workspace_id != current_user.active_workspace_id:
+    if not verify_user_workspace_access(current_user, run.workspace_id):
         raise HTTPException(status_code=403, detail="Access denied to this workspace's approvals.")
 
     return workflow_manager.store.list_approvals(run_id)
+
 

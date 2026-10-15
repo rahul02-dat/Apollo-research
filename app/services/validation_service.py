@@ -16,8 +16,9 @@ class ValidationService:
     def validate_claims(
         claims: list[Claim],
         registry: EvidenceRegistry,
+        run_id: str | None = None,
     ) -> ClaimValidationResult:
-        """Validates that all claims reference existing, verified evidence records."""
+        """Validates that all claims reference existing, verified evidence records from the correct run."""
         total_claims = len(claims)
         valid_claims = 0
         unsupported_claims: list[str] = []
@@ -32,7 +33,7 @@ class ValidationService:
                 claim.is_valid = False
                 continue
 
-            # Check 2: each referenced evidence ID must exist in registry
+            # Check 2: each referenced evidence ID must exist in registry and belong to the run
             claim_evidence_valid = True
             for eid in claim.evidence_ids:
                 ev_record = registry.get_evidence(eid)
@@ -42,6 +43,12 @@ class ValidationService:
                     claim_evidence_valid = False
                 elif ev_record.validation_status != "VALID":
                     errors.append(f"Claim '{claim.claim_id}' references invalid evidence_id '{eid}'.")
+                    claim_evidence_valid = False
+                elif run_id and ev_record.run_id and ev_record.run_id != run_id:
+                    errors.append(
+                        f"Claim '{claim.claim_id}' references cross-run evidence_id '{eid}' "
+                        f"(evidence run '{ev_record.run_id}' != claim run '{run_id}')."
+                    )
                     claim_evidence_valid = False
 
             if claim_evidence_valid:

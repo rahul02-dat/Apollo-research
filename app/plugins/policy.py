@@ -2,6 +2,7 @@
 
 import logging
 from typing import Any
+from app.config import settings
 from app.plugins.manifest import CURRENT_PLUGIN_API_VERSION, PluginManifest
 
 logger = logging.getLogger(__name__)
@@ -23,10 +24,22 @@ class UnauthorizedCapabilityError(PluginPolicyError):
 
 
 class PluginPolicyGate:
-    """Enforces manifest validation, compatibility, and capability permissions."""
+    """Enforces manifest validation, compatibility, and capability permissions.
 
-    def __init__(self, allowed_api_versions: set[str] | None = None) -> None:
+    SECURITY BOUNDARY NOTICE:
+    In-process Python plugins execute within the hosting process's OS security context and privileges.
+    This execution layer is NOT an operating system security sandbox or container isolation boundary.
+    Security and reliability rely on strict manifest schema validation, explicit capability authorization,
+    runtime execution deadlines, and schema validation. Arbitrary untrusted user code must not be loaded in-process.
+    """
+
+    def __init__(
+        self,
+        allowed_api_versions: set[str] | None = None,
+        fail_closed: bool | None = None,
+    ) -> None:
         self.allowed_api_versions = allowed_api_versions or {CURRENT_PLUGIN_API_VERSION}
+        self.fail_closed = fail_closed if fail_closed is not None else (settings.is_production or settings.FAIL_CLOSED_CAPABILITY_POLICY)
         self._granted_capabilities: dict[str, set[str]] = {}
 
     def validate_manifest(self, manifest: PluginManifest) -> None:
@@ -53,9 +66,17 @@ class PluginPolicyGate:
                 f"Plugin '{manifest.plugin_id}' does not declare capability '{capability}' in its manifest."
             )
 
-        granted = self._granted_capabilities.get(manifest.plugin_id, set())
-        # If no explicit grants have been configured, allow all declared capabilities for trusted builtins
-        if granted and capability not in granted:
-            raise UnauthorizedCapabilityError(
-                f"Capability '{capability}' was declared by '{manifest.plugin_id}' but not granted by policy."
-            )
+        granted = self._granted_capabilities.get(manifest.plugin_id)
+        if self.fail_closed:
+            # Fail-closed policy (production default or explicitly configured): capability must be explicitly granted
+            if not granted or capability not in granted:
+                raise UnauthorizedCapabilityError(
+                    f"Capability '{capability}' for plugin '{manifest.plugin_id}' is not granted under fail-closed capability policy."
+                )
+        else:
+            # Development mode: if specific grants are defined, enforce them; otherwise allow declared capabilities
+            if granted is not None and capability not in granted:
+                raise UnauthorizedCapabilityError(
+                    f"Capability '{capability}' was declared by '{manifest.plugin_id}' but not granted by policy."
+                )
+

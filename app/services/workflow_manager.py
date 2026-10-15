@@ -39,7 +39,7 @@ class WorkflowManager:
     def get_or_create_context(self, run_id: str, source_plugin_id: str = "sec_edgar") -> WorkflowContext:
         with self._lock:
             if run_id not in self._contexts:
-                ev_registry = EvidenceRegistry()
+                ev_registry = EvidenceRegistry(run_id=run_id, store=self.store)
                 ctx = WorkflowContext(
                     plugin_registry=self.plugin_registry,
                     evidence_registry=ev_registry,
@@ -106,6 +106,7 @@ class WorkflowManager:
         decision: ApprovalDecision = ApprovalDecision.APPROVED,
         feedback: str | None = None,
         async_execution: bool = False,
+        approver_user_id: str = "analyst",
     ) -> ResearchRun:
         """Records approval decision and resumes research workflow execution."""
         run = self.store.get_run(run_id)
@@ -115,8 +116,11 @@ class WorkflowManager:
         event = ApprovalEvent(
             event_id=f"APP_{uuid.uuid4().hex[:8].upper()}",
             run_id=run_id,
+            user_id=approver_user_id,
+            workspace_id=run.workspace_id,
             checkpoint=ApprovalCheckpoint.PLAN_APPROVAL,
             decision=decision,
+            approver=approver_user_id,
             feedback=feedback,
         )
         self.store.add_approval(event)

@@ -280,10 +280,22 @@ def render_pdf_node(state: ApolloWorkflowState, context: WorkflowContext) -> Apo
         f"Generated ReportLab PDF artifact: {artifact.file_path}",
         {"artifact_id": artifact.artifact_id, "file_path": artifact.file_path, "file_size_bytes": artifact.file_size_bytes},
     )
+    terminal_event = (
+        "RUN_COMPLETED" if report.status == RunStatus.COMPLETE
+        else "RUN_INCOMPLETE" if report.status == RunStatus.INCOMPLETE
+        else "RUN_TERMINATED"
+    )
+    terminal_message = (
+        f"Research run {report.run_id} completed successfully!"
+        if report.status == RunStatus.COMPLETE
+        else f"Research run {report.run_id} finished with incomplete validation coverage."
+        if report.status == RunStatus.INCOMPLETE
+        else f"Research run {report.run_id} finished with status {report.status.value}."
+    )
     event_broadcaster.publish(
         report.run_id,
-        "RUN_COMPLETED",
-        f"Research run {report.run_id} completed successfully!",
+        terminal_event,
+        terminal_message,
         {"status": report.status.value},
     )
 

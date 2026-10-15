@@ -37,5 +37,44 @@ class Settings(BaseSettings):
     # Artifact Storage
     REPORT_OUTPUT_DIR: Path = Path("./reports")
 
+    # Plugin Execution Deadlines & Security
+    PLUGIN_EXECUTION_TIMEOUT_SECONDS: float = 30.0
+    FAIL_CLOSED_CAPABILITY_POLICY: bool = False
+
+    @property
+    def is_production(self) -> bool:
+        return self.APOLLO_ENV.strip().lower() in ("production", "prod")
+
+    def model_post_init(self, __context: object) -> None:
+        if self.is_production:
+            # Enforce fail-closed security invariants in production
+            if not self.REQUIRE_AUTH:
+                raise ValueError("Production configuration violation: REQUIRE_AUTH cannot be disabled in production.")
+
+            unsafe_keys = {
+                "apollo-sec-research-super-secret-key-prod-01",
+                "secret",
+                "changeme",
+                "admin",
+            }
+            key_lower = self.AUTH_SECRET_KEY.lower()
+            if (
+                self.AUTH_SECRET_KEY in unsafe_keys
+                or "change-in-prod" in key_lower
+                or "default-secret" in key_lower
+                or len(self.AUTH_SECRET_KEY.strip()) < 32
+            ):
+                raise ValueError(
+                    "Production configuration violation: Default or insecure AUTH_SECRET_KEY is prohibited in production. "
+                    "AUTH_SECRET_KEY must be at least 32 characters and cryptographically secure."
+                )
+
+            if "example.com" in self.SEC_USER_AGENT or not self.SEC_USER_AGENT.strip():
+                raise ValueError(
+                    "Production configuration violation: Default SEC_USER_AGENT is prohibited in production. "
+                    "Must specify valid institutional contact information per SEC EDGAR regulations."
+                )
+
 
 settings = Settings()
+

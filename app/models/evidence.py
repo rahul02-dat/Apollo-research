@@ -21,6 +21,8 @@ class EvidenceType(str, Enum):
 class EvidenceRecord(BaseModel):
     evidence_id: str
     source_id: str
+    run_id: str | None = None
+    workspace_id: str | None = None
     source_url: str | None = None
     locator: str  # section name, XBRL tag, table identifier
     excerpt: str | None = None

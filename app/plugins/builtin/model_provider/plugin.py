@@ -124,15 +124,15 @@ class MockModelProvider:
         sample_dict: dict[str, Any] = {}
         for field_name, field_info in schema.model_fields.items():
             annotation = field_info.annotation
-            if annotation == str or annotation == (str | None):
+            if annotation is str or annotation == (str | None):
                 sample_dict[field_name] = f"Mock {field_name}"
-            elif annotation == list or str(annotation).startswith("list"):
+            elif annotation is list or str(annotation).startswith("list"):
                 sample_dict[field_name] = []
-            elif annotation == int:
+            elif annotation is int:
                 sample_dict[field_name] = 1
-            elif annotation == bool:
+            elif annotation is bool:
                 sample_dict[field_name] = True
-            elif annotation == dict or str(annotation).startswith("dict"):
+            elif annotation is dict or str(annotation).startswith("dict"):
                 sample_dict[field_name] = {}
         return schema.model_validate(sample_dict)
 

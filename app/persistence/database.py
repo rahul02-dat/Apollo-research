@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Any
 from app.config import settings
 from app.models.approvals import ApprovalEvent
+from app.models.evidence import EvidenceRecord
 from app.models.reports import FinalReport, ReportArtifact
 from app.models.research import ResearchItinerary, ResearchRun, RunStatus
+from app.models.sources import SourceDocument
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +20,8 @@ logger = logging.getLogger(__name__)
 class RunStore:
     """Thread-safe persistent repository for Apollo research runs, itineraries, reports, and multi-tenant workspaces."""
 
-    def __init__(self, db_url: str | None = None, database_url: str | None = None) -> None:
-        self.db_url = database_url or db_url or settings.DATABASE_URL
+    def __init__(self, db_url: str | None = None, database_url: str | None = None, db_path: Any = None) -> None:
+        self.db_url = str(db_path) if db_path else (database_url or db_url or settings.DATABASE_URL)
         self._local = threading.local()
         self._lock = threading.Lock()
 
@@ -29,10 +31,16 @@ class RunStore:
         self._reports: dict[str, FinalReport] = {}
         self._artifacts: dict[str, ReportArtifact] = {}
         self._approvals: dict[str, list[ApprovalEvent]] = {}
+        self._sources: dict[str, SourceDocument] = {}
+        self._evidence: dict[str, EvidenceRecord] = {}
+        self._run_to_sources: dict[str, list[str]] = {}
+        self._run_to_evidence: dict[str, list[str]] = {}
 
         # Resolve SQLite file path
         if self.db_url.startswith("sqlite:///"):
             self._sqlite_path = self.db_url.replace("sqlite:///", "")
+        elif self.db_url:
+            self._sqlite_path = self.db_url
         else:
             self._sqlite_path = "./apollo_research.db"
 
@@ -135,6 +143,32 @@ class RunStore:
                     );
                 """)
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS sources (
+                        source_id TEXT PRIMARY KEY,
+                        run_id TEXT,
+                        workspace_id TEXT,
+                        title TEXT,
+                        source_url TEXT,
+                        data_json TEXT
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_sources_run ON sources (run_id);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS evidence (
+                        evidence_id TEXT PRIMARY KEY,
+                        run_id TEXT,
+                        workspace_id TEXT,
+                        source_id TEXT,
+                        locator TEXT,
+                        fact_name TEXT,
+                        validation_status TEXT,
+                        data_json TEXT
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_evidence_run ON evidence (run_id);")
+
                 # Seed default verified user and workspace
                 conn.execute("""
                     INSERT OR IGNORE INTO users (user_id, email, name, role, api_key, active_workspace_id, created_at)
@@ -201,7 +235,42 @@ class RunStore:
                 except Exception as e:
                     logger.warning("Error deserializing approval from DB: %s", e)
 
-            logger.info("Loaded %d runs, %d reports from durable database (%s)", len(self._runs), len(self._reports), self._sqlite_path)
+            # 6. Load sources
+            cur = conn.execute("SELECT run_id, data_json FROM sources")
+            for row in cur.fetchall():
+                try:
+                    data = json.loads(row["data_json"])
+                    doc = SourceDocument.model_validate(data)
+                    self._sources[doc.source_id] = doc
+                    r_id = row["run_id"]
+                    if r_id:
+                        if r_id not in self._run_to_sources:
+                            self._run_to_sources[r_id] = []
+                        if doc.source_id not in self._run_to_sources[r_id]:
+                            self._run_to_sources[r_id].append(doc.source_id)
+                except Exception as e:
+                    logger.warning("Error deserializing source from DB: %s", e)
+
+            # 7. Load evidence
+            cur = conn.execute("SELECT run_id, data_json FROM evidence")
+            for row in cur.fetchall():
+                try:
+                    data = json.loads(row["data_json"])
+                    rec = EvidenceRecord.model_validate(data)
+                    self._evidence[rec.evidence_id] = rec
+                    r_id = row["run_id"]
+                    if r_id:
+                        if r_id not in self._run_to_evidence:
+                            self._run_to_evidence[r_id] = []
+                        if rec.evidence_id not in self._run_to_evidence[r_id]:
+                            self._run_to_evidence[r_id].append(rec.evidence_id)
+                except Exception as e:
+                    logger.warning("Error deserializing evidence from DB: %s", e)
+
+            logger.info(
+                "Loaded %d runs, %d reports, %d sources, %d evidence records from durable database (%s)",
+                len(self._runs), len(self._reports), len(self._sources), len(self._evidence), self._sqlite_path
+            )
         except Exception as e:
             logger.warning("Could not pre-load records from DB: %s", e)
 
@@ -398,7 +467,119 @@ class RunStore:
             """, (workspace_id, name, owner_id))
         return {"workspace_id": workspace_id, "name": name, "owner_id": owner_id}
 
+    def user_has_workspace_access(self, user_id: str, workspace_id: str) -> bool:
+        """Determines if a user has access to the given workspace."""
+        if not workspace_id or workspace_id == "ws_default":
+            return True
+        user = self.get_user(user_id)
+        if user:
+            if user.get("role") == "ADMIN":
+                return True
+            if user.get("active_workspace_id") == workspace_id:
+                return True
+        workspaces = self.list_workspaces_for_user(user_id)
+        return any(ws.get("workspace_id") == workspace_id for ws in workspaces)
+
+    # --- Source & Evidence Persistence Methods ---
+    def save_source(self, source: SourceDocument, run_id: str | None = None, workspace_id: str | None = None) -> None:
+        self._sources[source.source_id] = source
+        if run_id:
+            if run_id not in self._run_to_sources:
+                self._run_to_sources[run_id] = []
+            if source.source_id not in self._run_to_sources[run_id]:
+                self._run_to_sources[run_id].append(source.source_id)
+        try:
+            conn = self._get_conn()
+            with self._lock, conn:
+                conn.execute("""
+                    INSERT INTO sources (source_id, run_id, workspace_id, title, source_url, data_json)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source_id) DO UPDATE SET
+                        run_id = COALESCE(excluded.run_id, sources.run_id),
+                        workspace_id = COALESCE(excluded.workspace_id, sources.workspace_id),
+                        data_json = excluded.data_json;
+                """, (source.source_id, run_id, workspace_id, source.title, source.source_url, source.model_dump_json()))
+        except Exception as e:
+            logger.error("Failed to persist source %s: %s", source.source_id, e)
+
+    def get_source(self, source_id: str) -> SourceDocument | None:
+        return self._sources.get(source_id)
+
+    def list_sources_for_run(self, run_id: str) -> list[SourceDocument]:
+        source_ids = self._run_to_sources.get(run_id, [])
+        if source_ids:
+            return [self._sources[sid] for sid in source_ids if sid in self._sources]
+        try:
+            conn = self._get_conn()
+            cur = conn.execute("SELECT data_json FROM sources WHERE run_id = ?", (run_id,))
+            docs = []
+            for row in cur.fetchall():
+                try:
+                    doc = SourceDocument.model_validate_json(row["data_json"])
+                    self._sources[doc.source_id] = doc
+                    docs.append(doc)
+                except Exception:
+                    pass
+            return docs
+        except Exception:
+            return []
+
+    def save_evidence(self, record: EvidenceRecord, run_id: str | None = None, workspace_id: str | None = None) -> None:
+        self._evidence[record.evidence_id] = record
+        if run_id:
+            if run_id not in self._run_to_evidence:
+                self._run_to_evidence[run_id] = []
+            if record.evidence_id not in self._run_to_evidence[run_id]:
+                self._run_to_evidence[run_id].append(record.evidence_id)
+        try:
+            conn = self._get_conn()
+            status_val = record.validation_status.value if hasattr(record.validation_status, "value") else str(record.validation_status)
+            with self._lock, conn:
+                conn.execute("""
+                    INSERT INTO evidence (evidence_id, run_id, workspace_id, source_id, locator, fact_name, validation_status, data_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(evidence_id) DO UPDATE SET
+                        run_id = COALESCE(excluded.run_id, evidence.run_id),
+                        workspace_id = COALESCE(excluded.workspace_id, evidence.workspace_id),
+                        validation_status = excluded.validation_status,
+                        data_json = excluded.data_json;
+                """, (
+                    record.evidence_id,
+                    run_id,
+                    workspace_id,
+                    record.source_id,
+                    record.locator,
+                    record.fact_name,
+                    status_val,
+                    record.model_dump_json()
+                ))
+        except Exception as e:
+            logger.error("Failed to persist evidence %s: %s", record.evidence_id, e)
+
+    def get_evidence(self, evidence_id: str) -> EvidenceRecord | None:
+        return self._evidence.get(evidence_id)
+
+    def list_evidence_for_run(self, run_id: str) -> list[EvidenceRecord]:
+        ev_ids = self._run_to_evidence.get(run_id, [])
+        if ev_ids:
+            return [self._evidence[eid] for eid in ev_ids if eid in self._evidence]
+        try:
+            conn = self._get_conn()
+            cur = conn.execute("SELECT data_json FROM evidence WHERE run_id = ?", (run_id,))
+            records = []
+            for row in cur.fetchall():
+                try:
+                    rec = EvidenceRecord.model_validate_json(row["data_json"])
+                    self._evidence[rec.evidence_id] = rec
+                    records.append(rec)
+                except Exception:
+                    pass
+            return records
+        except Exception:
+            return []
+
 
 # Global store instance
 run_store = RunStore()
+
 

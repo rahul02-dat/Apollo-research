@@ -54,32 +54,55 @@ class FinancialAnalyticsPlugin:
         prior_rev: Decimal | None = None
 
         if rev_records:
-            # Chronological series (earliest to latest)
+            # Chronological annual series (earliest to latest) - strictly filters out quarterly and unit-mismatched records
             rev_chrono = self._extract_annual_series(rev_records)
-            latest_rev = rev_records[0].value
+            latest_rec = rev_chrono[-1] if rev_chrono else rev_records[0]
+            latest_rev = latest_rec.value
             computed["metrics"]["latest_revenue"] = {
                 "value": str(latest_rev),
                 "formatted": self._format_currency(latest_rev),
-                "period": rev_records[0].period_end,
-                "evidence_id": rev_records[0].evidence_id,
+                "period": latest_rec.period_end,
+                "evidence_id": latest_rec.evidence_id,
+                "unit": latest_rec.unit or "USD",
             }
 
-            # Prior year comparison
-            if len(rev_records) > 1:
-                prior_rev = rev_records[1].value
+            # Prior year comparison (requires matching units and annual period)
+            if len(rev_chrono) >= 2:
+                prior_rec = rev_chrono[-2]
+                prior_rev = prior_rec.value
                 computed["metrics"]["prior_revenue"] = {
                     "value": str(prior_rev),
                     "formatted": self._format_currency(prior_rev),
-                    "period": rev_records[1].period_end,
-                    "evidence_id": rev_records[1].evidence_id,
+                    "period": prior_rec.period_end,
+                    "evidence_id": prior_rec.evidence_id,
+                    "unit": prior_rec.unit or "USD",
                 }
-                if prior_rev and prior_rev != 0:
+                # Unit consistency validation
+                units_match = (latest_rec.unit or "USD").upper() == (prior_rec.unit or "USD").upper()
+                if units_match and prior_rev and prior_rev != 0 and latest_rev is not None:
                     yoy_growth = ((latest_rev - prior_rev) / abs(prior_rev)) * Decimal("100")
                     yoy_growth_rounded = yoy_growth.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                     sign = "+" if yoy_growth > 0 else ""
                     computed["ratios"]["revenue_yoy_growth"] = {
                         "value": float(yoy_growth_rounded),
                         "formatted": f"{sign}{yoy_growth_rounded}%",
+                        "formula": "((latest_revenue - prior_revenue) / abs(prior_revenue)) * 100",
+                        "lineage": {
+                            "inputs": {
+                                "latest_revenue": {
+                                    "evidence_id": latest_rec.evidence_id,
+                                    "value": str(latest_rev),
+                                    "period": latest_rec.period_end,
+                                    "unit": latest_rec.unit or "USD",
+                                },
+                                "prior_revenue": {
+                                    "evidence_id": prior_rec.evidence_id,
+                                    "value": str(prior_rev),
+                                    "period": prior_rec.period_end,
+                                    "unit": prior_rec.unit or "USD",
+                                },
+                            },
+                        },
                     }
                     computed["summary_highlights"].append(
                         f"YoY Revenue Growth: {sign}{yoy_growth_rounded}% (from {self._format_currency(prior_rev)} to {self._format_currency(latest_rev)})"
@@ -104,6 +127,7 @@ class FinancialAnalyticsPlugin:
                         "formatted": self._format_currency(val),
                         "yoy_growth_pct": growth_from_prior,
                         "evidence_id": r.evidence_id,
+                        "unit": r.unit or "USD",
                     })
 
                 initial_rec = rev_chrono[0]
@@ -120,6 +144,22 @@ class FinancialAnalyticsPlugin:
                     "end_period": final_rec.period_end,
                     "start_value": self._format_currency(initial_rec.value or Decimal("0")),
                     "end_value": self._format_currency(final_rec.value or Decimal("0")),
+                    "formula": "((final_revenue / initial_revenue) ** (1 / n_years) - 1) * 100",
+                    "lineage": {
+                        "initial_record": {
+                            "evidence_id": initial_rec.evidence_id,
+                            "value": str(initial_rec.value),
+                            "period": initial_rec.period_end,
+                            "unit": initial_rec.unit or "USD",
+                        },
+                        "final_record": {
+                            "evidence_id": final_rec.evidence_id,
+                            "value": str(final_rec.value),
+                            "period": final_rec.period_end,
+                            "unit": final_rec.unit or "USD",
+                        },
+                        "span_years": n_years,
+                    },
                 }
                 computed["trends"]["revenue_series"] = series_data
 
@@ -140,41 +180,80 @@ class FinancialAnalyticsPlugin:
 
         # 2. Operating Income & Operating Margin Multi-Year
         op_inc_records = facts_by_tag.get("OperatingIncomeLoss", [])
-        if op_inc_records:
-            latest_op_inc = op_inc_records[0].value
+        op_chrono = self._extract_annual_series(op_inc_records)
+        latest_op_rec = op_chrono[-1] if op_chrono else (op_inc_records[0] if op_inc_records else None)
+        if latest_op_rec:
+            latest_op_inc = latest_op_rec.value
             computed["metrics"]["operating_income"] = {
                 "value": str(latest_op_inc),
                 "formatted": self._format_currency(latest_op_inc),
-                "period": op_inc_records[0].period_end,
-                "evidence_id": op_inc_records[0].evidence_id,
+                "period": latest_op_rec.period_end,
+                "evidence_id": latest_op_rec.evidence_id,
+                "unit": latest_op_rec.unit or "USD",
             }
-            if latest_rev and latest_rev > 0 and latest_op_inc is not None:
-                op_margin = (latest_op_inc / latest_rev) * Decimal("100")
-                op_margin_rounded = op_margin.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                computed["ratios"]["operating_margin"] = {
-                    "value": float(op_margin_rounded),
-                    "formatted": f"{op_margin_rounded}%",
-                }
-                computed["summary_highlights"].append(f"Operating Margin: {op_margin_rounded}%")
+            # For margin calculation, pair with matching annual revenue
+            rev_for_op = None
+            if rev_chrono:
+                match = next((r for r in rev_chrono if r.period_end == latest_op_rec.period_end), None)
+                if match:
+                    rev_for_op = match
+                elif rev_chrono[-1].period_end == latest_op_rec.period_end:
+                    rev_for_op = rev_chrono[-1]
+
+            if rev_for_op and rev_for_op.value and rev_for_op.value > 0 and latest_op_inc is not None:
+                units_match = (latest_op_rec.unit or "USD").upper() == (rev_for_op.unit or "USD").upper()
+                if units_match:
+                    op_margin = (latest_op_inc / rev_for_op.value) * Decimal("100")
+                    op_margin_rounded = op_margin.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    computed["ratios"]["operating_margin"] = {
+                        "value": float(op_margin_rounded),
+                        "formatted": f"{op_margin_rounded}%",
+                        "formula": "(operating_income / revenue) * 100",
+                        "lineage": {
+                            "operating_income_evidence_id": latest_op_rec.evidence_id,
+                            "revenue_evidence_id": rev_for_op.evidence_id,
+                            "period": latest_op_rec.period_end,
+                        },
+                    }
+                    computed["summary_highlights"].append(f"Operating Margin: {op_margin_rounded}%")
 
         # 3. Net Income & Net Profit Margin Multi-Year
         net_inc_records = facts_by_tag.get("NetIncomeLoss", [])
-        if net_inc_records:
-            latest_net_inc = net_inc_records[0].value
+        net_chrono = self._extract_annual_series(net_inc_records)
+        latest_net_rec = net_chrono[-1] if net_chrono else (net_inc_records[0] if net_inc_records else None)
+        if latest_net_rec:
+            latest_net_inc = latest_net_rec.value
             computed["metrics"]["net_income"] = {
                 "value": str(latest_net_inc),
                 "formatted": self._format_currency(latest_net_inc),
-                "period": net_inc_records[0].period_end,
-                "evidence_id": net_inc_records[0].evidence_id,
+                "period": latest_net_rec.period_end,
+                "evidence_id": latest_net_rec.evidence_id,
+                "unit": latest_net_rec.unit or "USD",
             }
-            if latest_rev and latest_rev > 0 and latest_net_inc is not None:
-                net_margin = (latest_net_inc / latest_rev) * Decimal("100")
-                net_margin_rounded = net_margin.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                computed["ratios"]["net_profit_margin"] = {
-                    "value": float(net_margin_rounded),
-                    "formatted": f"{net_margin_rounded}%",
-                }
-                computed["summary_highlights"].append(f"Net Profit Margin: {net_margin_rounded}%")
+            rev_for_net = None
+            if rev_chrono:
+                match = next((r for r in rev_chrono if r.period_end == latest_net_rec.period_end), None)
+                if match:
+                    rev_for_net = match
+                elif rev_chrono[-1].period_end == latest_net_rec.period_end:
+                    rev_for_net = rev_chrono[-1]
+
+            if rev_for_net and rev_for_net.value and rev_for_net.value > 0 and latest_net_inc is not None:
+                units_match = (latest_net_rec.unit or "USD").upper() == (rev_for_net.unit or "USD").upper()
+                if units_match:
+                    net_margin = (latest_net_inc / rev_for_net.value) * Decimal("100")
+                    net_margin_rounded = net_margin.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    computed["ratios"]["net_profit_margin"] = {
+                        "value": float(net_margin_rounded),
+                        "formatted": f"{net_margin_rounded}%",
+                        "formula": "(net_income / revenue) * 100",
+                        "lineage": {
+                            "net_income_evidence_id": latest_net_rec.evidence_id,
+                            "revenue_evidence_id": rev_for_net.evidence_id,
+                            "period": latest_net_rec.period_end,
+                        },
+                    }
+                    computed["summary_highlights"].append(f"Net Profit Margin: {net_margin_rounded}%")
 
         # Margin Multi-Year Series & Chart
         if rev_records:
@@ -222,34 +301,54 @@ class FinancialAnalyticsPlugin:
             computed["metrics"]["total_assets"] = {
                 "value": str(latest_assets),
                 "formatted": self._format_currency(latest_assets),
+                "unit": assets_records[0].unit or "USD",
+                "evidence_id": assets_records[0].evidence_id,
             }
         if latest_liab is not None:
             computed["metrics"]["total_liabilities"] = {
                 "value": str(latest_liab),
                 "formatted": self._format_currency(latest_liab),
+                "unit": liab_records[0].unit or "USD",
+                "evidence_id": liab_records[0].evidence_id,
             }
         if latest_cash is not None:
             computed["metrics"]["cash_and_equivalents"] = {
                 "value": str(latest_cash),
                 "formatted": self._format_currency(latest_cash),
+                "unit": cash_records[0].unit or "USD",
+                "evidence_id": cash_records[0].evidence_id,
             }
 
         # Leverage & Solvency Ratios
         if latest_assets and latest_assets > 0 and latest_liab is not None:
-            debt_to_assets = (latest_liab / latest_assets) * Decimal("100")
-            debt_to_assets_rounded = debt_to_assets.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            computed["ratios"]["debt_to_assets"] = {
-                "value": float(debt_to_assets_rounded),
-                "formatted": f"{debt_to_assets_rounded}%",
-            }
-            computed["summary_highlights"].append(f"Debt-to-Assets Ratio: {debt_to_assets_rounded}%")
+            units_match = (assets_records[0].unit or "USD").upper() == (liab_records[0].unit or "USD").upper()
+            if units_match:
+                debt_to_assets = (latest_liab / latest_assets) * Decimal("100")
+                debt_to_assets_rounded = debt_to_assets.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                computed["ratios"]["debt_to_assets"] = {
+                    "value": float(debt_to_assets_rounded),
+                    "formatted": f"{debt_to_assets_rounded}%",
+                    "formula": "(total_liabilities / total_assets) * 100",
+                    "lineage": {
+                        "total_liabilities_evidence_id": liab_records[0].evidence_id,
+                        "total_assets_evidence_id": assets_records[0].evidence_id,
+                    },
+                }
+                computed["summary_highlights"].append(f"Debt-to-Assets Ratio: {debt_to_assets_rounded}%")
 
         if latest_liab and latest_liab > 0 and latest_cash is not None:
-            cash_coverage = (latest_cash / latest_liab).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            computed["ratios"]["cash_to_liabilities"] = {
-                "value": float(cash_coverage),
-                "formatted": f"{cash_coverage}x",
-            }
+            units_match = (cash_records[0].unit or "USD").upper() == (liab_records[0].unit or "USD").upper()
+            if units_match:
+                cash_coverage = (latest_cash / latest_liab).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                computed["ratios"]["cash_to_liabilities"] = {
+                    "value": float(cash_coverage),
+                    "formatted": f"{cash_coverage}x",
+                    "formula": "cash_and_equivalents / total_liabilities",
+                    "lineage": {
+                        "cash_evidence_id": cash_records[0].evidence_id,
+                        "liabilities_evidence_id": liab_records[0].evidence_id,
+                    },
+                }
 
         # Balance sheet capital structure chart
         if latest_assets is not None and latest_liab is not None:
@@ -282,15 +381,58 @@ class FinancialAnalyticsPlugin:
             return 0.0
 
     @classmethod
+    def _is_annual_record(cls, r: EvidenceRecord) -> bool:
+        """Determines if an evidence record represents an annual (FY) period, avoiding quarterly/interim mixing."""
+        # 1. Check explicit fiscal_period if available
+        fp = (r.fiscal_period or "").upper().strip()
+        if any(q in fp for q in ("Q1", "Q2", "Q3", "Q4", "1Q", "2Q", "3Q", "4Q", "QUARTER")):
+            return False
+
+        # 2. Check metadata or form_type if present
+        meta = r.metadata or {}
+        form = str(meta.get("form") or meta.get("form_type") or "").upper()
+        if "10-Q" in form:
+            return False
+
+        # 3. If period_start and period_end are present, check the day duration
+        if r.period_start and r.period_end:
+            try:
+                from datetime import datetime
+                d1 = datetime.strptime(r.period_start[:10], "%Y-%m-%d")
+                d2 = datetime.strptime(r.period_end[:10], "%Y-%m-%d")
+                days = abs((d2 - d1).days)
+                # An annual period is roughly 365 days; anything significantly under 300 days is quarterly or semi-annual
+                if days < 300:
+                    return False
+            except Exception:
+                pass
+
+        return True
+
+    @classmethod
     def _extract_annual_series(cls, records: list[EvidenceRecord]) -> list[EvidenceRecord]:
-        """Extracts unique annual periods sorted chronologically (earliest to latest)."""
-        seen_dates: set[str] = set()
-        unique_records: list[EvidenceRecord] = []
+        """Extracts unique annual periods sorted chronologically (earliest to latest).
+        Filters out quarterly/interim periods, missing values, and duplicate periods deterministically.
+        """
+        seen_dates: dict[str, EvidenceRecord] = {}
         for r in records:
+            if not cls._is_annual_record(r):
+                continue
+            if r.value is None:
+                continue
             p_end = r.period_end or ""
-            if p_end and p_end not in seen_dates:
-                seen_dates.add(p_end)
-                unique_records.append(r)
+            if not p_end:
+                continue
+            if p_end not in seen_dates:
+                seen_dates[p_end] = r
+            else:
+                existing = seen_dates[p_end]
+                t_new = (r.metadata or {}).get("extracted_at", "")
+                t_old = (existing.metadata or {}).get("extracted_at", "")
+                if t_new > t_old:
+                    seen_dates[p_end] = r
+
+        unique_records = list(seen_dates.values())
         unique_records.sort(key=lambda r: (r.period_end or "", r.period_start or ""))
         return unique_records
 
