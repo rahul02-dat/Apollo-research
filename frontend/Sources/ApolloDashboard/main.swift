@@ -440,9 +440,17 @@ let dashboardHTML = """
                     <p>Plugin-Based Autonomous Research Agent · Swift Web Dashboard</p>
                 </div>
             </div>
-            <div class="system-pill">
-                <div class="pulse-dot"></div>
-                <span id="api-status">Connecting to FastAPI (8000)...</span>
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div class="user-pill" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.85rem; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 9999px; font-size: 0.82rem;">
+                    <span style="color: var(--accent-cyan);">👤</span>
+                    <span id="active-user-name" style="font-weight: 500;">Senior Financial Analyst (ANALYST)</span>
+                    <span style="color: var(--text-muted); font-size: 0.75rem;">|</span>
+                    <span style="color: var(--accent-amber);" id="active-workspace-badge">🏢 Default Workspace</span>
+                </div>
+                <div class="system-pill">
+                    <div class="pulse-dot"></div>
+                    <span id="api-status">Connecting to FastAPI (8000)...</span>
+                </div>
             </div>
         </header>
 
@@ -1093,8 +1101,29 @@ let dashboardHTML = """
             }
         }
 
+        async function loadUserProfileAndWorkspaces() {
+            try {
+                const res = await fetch(`${API_BASE}/api/auth/me`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.user) {
+                        const userEl = document.getElementById("active-user-name");
+                        if (userEl) userEl.innerText = `${data.user.name} (${data.user.role})`;
+                    }
+                    if (data.workspaces && data.workspaces.length > 0) {
+                        const wsBadge = document.getElementById("active-workspace-badge");
+                        const activeWs = data.workspaces.find(w => w.workspace_id === data.user.active_workspace_id) || data.workspaces[0];
+                        if (wsBadge) wsBadge.innerText = `🏢 ${activeWs.name}`;
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not load user profile:", e);
+            }
+        }
+
         setInterval(checkHealth, 5000);
         checkHealth();
+        loadUserProfileAndWorkspaces();
     </script>
 </body>
 </html>

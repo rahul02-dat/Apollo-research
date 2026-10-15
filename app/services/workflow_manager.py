@@ -49,11 +49,22 @@ class WorkflowManager:
                 self._contexts[run_id] = ctx
             return self._contexts[run_id]
 
-    def create_run(self, ticker_or_name: str, objective: str, source_plugin_id: str = "sec_edgar") -> tuple[ResearchRun, ResearchItinerary]:
+    def create_run(
+        self,
+        ticker_or_name: str,
+        objective: str,
+        source_plugin_id: str = "sec_edgar",
+        user_id: str = "usr_primary_analyst",
+        workspace_id: str = "ws_default",
+        requested_by: str = "analyst",
+    ) -> tuple[ResearchRun, ResearchItinerary]:
         """Creates a research run, normalizes the request, resolves the issuer, and plans the itinerary."""
         run_id = f"RUN_{uuid.uuid4().hex[:12].upper()}"
         initial_run = ResearchRun(
             run_id=run_id,
+            requested_by=requested_by,
+            user_id=user_id,
+            workspace_id=workspace_id,
             company_name=ticker_or_name,
             ticker=ticker_or_name.upper() if len(ticker_or_name) <= 5 and ticker_or_name.isalpha() else None,
             objective=objective,

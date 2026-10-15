@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Persistence
     DATABASE_URL: str = "sqlite:///./apollo_research.db"
 
+    # Authentication & Multi-Tenancy
+    AUTH_SECRET_KEY: str = "apollo-sec-research-super-secret-key-prod-01"
+    AUTH_ALGORITHM: str = "HS256"
+    AUTH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    REQUIRE_AUTH: bool = False
+
     # LLM Provider
     DEFAULT_LLM_PROVIDER: str = "ollama"
     OLLAMA_BASE_URL: str = "http://localhost:11434"

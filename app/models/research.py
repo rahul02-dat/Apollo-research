@@ -55,6 +55,8 @@ class ResearchItinerary(BaseModel):
 class ResearchRun(BaseModel):
     run_id: str
     requested_by: str = "analyst"
+    user_id: str = "usr_primary_analyst"
+    workspace_id: str = "ws_default"
     company_name: str
     ticker: str | None = None
     cik: str | None = None

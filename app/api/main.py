@@ -3,6 +3,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.auth import router as auth_router
 from app.api.routes_approvals import router as approvals_router
 from app.api.routes_evidence import router as evidence_router
 from app.api.routes_plugins import router as plugins_router
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 # Register routers
+app.include_router(auth_router)
 app.include_router(research_router)
 app.include_router(approvals_router)
 app.include_router(evidence_router)
