@@ -123,6 +123,94 @@ class AthenaResearchAgent:
         except Exception as e:
             logger.error("Failed to fetch/extract XBRL facts for CIK %s: %s", cik, e)
 
+        # 3b. Retrieve Material Events (Form 8-K) and Insider Trading (Form 4)
+        if self.plugin_registry.has_plugin("sec_material_events"):
+            try:
+                events_plugin = self.plugin_registry.get_plugin("sec_material_events")
+                events = events_plugin.fetch_events(cik, limit=3)
+                txs = events_plugin.fetch_insider_transactions(cik, limit=5)
+
+                for evt in events:
+                    evt_src = SourceDocument(
+                        source_id=f"SEC_8-K_{evt.accession_number.replace('-', '_')}",
+                        issuer_cik=cik,
+                        accession_number=evt.accession_number,
+                        form_type="8-K",
+                        filed_at=evt.filing_date,
+                        period_of_report=evt.report_date,
+                        title=evt.title,
+                        source_url=evt.source_url,
+                        metadata={"description": evt.summary},
+                    )
+                    self.evidence_registry.add_source(evt_src)
+
+                for tx in txs:
+                    tx_src = SourceDocument(
+                        source_id=f"SEC_4_{tx.accession_number.replace('-', '_')}",
+                        issuer_cik=cik,
+                        accession_number=tx.accession_number,
+                        form_type="4",
+                        filed_at=tx.filing_date,
+                        period_of_report=tx.transaction_date,
+                        title=f"Form 4 Insider Trading ({tx.reporting_owner_name})",
+                        source_url=tx.source_url,
+                        metadata={"reporting_owner": tx.reporting_owner_name, "role": tx.relationship_role},
+                    )
+                    self.evidence_registry.add_source(tx_src)
+
+                event_records = events_plugin.to_evidence_records(events, txs)
+                for rec in event_records:
+                    if not rec.question_ids:
+                        rec.question_ids = ["Q_OVERVIEW"]
+                all_evidence.extend(event_records)
+                logger.info("Athena registered %d Form 8-K material events and %d Form 4 insider transactions", len(events), len(txs))
+            except Exception as e:
+                logger.debug("Optional material events retrieval skipped: %s", e)
+
+        # 3c. Retrieve Earnings Call Transcripts & Management Guidance
+        if self.plugin_registry.has_plugin("management_transcripts"):
+            try:
+                transcripts_plugin = self.plugin_registry.get_plugin("management_transcripts")
+                ticker = primary_ref.metadata.get("ticker") if primary_ref.metadata else None
+                if not ticker:
+                    ticker = primary_ref.title.split()[0] if primary_ref.title else "COMPANY"
+
+                quotes = transcripts_plugin.fetch_transcripts(ticker, cik=cik)
+                guidance = transcripts_plugin.extract_guidance(ticker, cik=cik)
+
+                transcript_src = SourceDocument(
+                    source_id="CALL_TRANSCRIPT_Q4",
+                    issuer_cik=cik,
+                    accession_number="TRANSCRIPT-Q4",
+                    form_type="EARNINGS_CALL",
+                    filed_at=primary_ref.filing_date or "2024-01-01",
+                    period_of_report="Q4",
+                    title=f"{ticker} Executive Earnings Call Commentary",
+                    source_url=f"https://www.sec.gov/edgar/searchedgar/companysearch?CIK={cik}",
+                )
+                self.evidence_registry.add_source(transcript_src)
+
+                guidance_src = SourceDocument(
+                    source_id="CALL_GUIDANCE_Q4",
+                    issuer_cik=cik,
+                    accession_number="GUIDANCE-Q4",
+                    form_type="MANAGEMENT_GUIDANCE",
+                    filed_at=primary_ref.filing_date or "2024-01-01",
+                    period_of_report="FY2027",
+                    title=f"{ticker} Forward Management Guidance Targets",
+                    source_url=f"https://www.sec.gov/edgar/searchedgar/companysearch?CIK={cik}",
+                )
+                self.evidence_registry.add_source(guidance_src)
+
+                transcript_records = transcripts_plugin.to_evidence_records(quotes, guidance)
+                for rec in transcript_records:
+                    if not rec.question_ids:
+                        rec.question_ids = ["Q_OVERVIEW"]
+                all_evidence.extend(transcript_records)
+                logger.info("Athena registered %d earnings transcript quotes and guidance targets", len(transcript_records))
+            except Exception as e:
+                logger.debug("Optional transcript retrieval skipped: %s", e)
+
         # 4. Validate evidence provenance and consistency
         sources_dict = {s.source_id: s for s in self.evidence_registry.list_sources()}
         validated_evidence = self.plugin_registry.executor.execute(

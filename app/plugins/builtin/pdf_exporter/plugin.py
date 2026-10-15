@@ -235,6 +235,105 @@ class PDFExporterPlugin:
             for lim in report.unresolved_limitations:
                 story.append(Paragraph(f"• {lim}", body_style))
 
+        # Material Events (Form 8-K) Table
+        mat_events = report.financial_metrics.get("material_events", [])
+        if mat_events:
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#E2E8F0"), spaceAfter=14))
+            story.append(Paragraph("Material Corporate Events (SEC Form 8-K)", h1_style))
+            story.append(
+                Paragraph(
+                    "Significant corporate actions, material agreements, earnings releases, and leadership developments "
+                    "filed under SEC Form 8-K.",
+                    body_style,
+                )
+            )
+            story.append(Spacer(1, 6))
+
+            events_table_data = [
+                [
+                    Paragraph("<b>Filing Date</b>", body_style),
+                    Paragraph("<b>Event Title & Disclosure Scope</b>", body_style),
+                    Paragraph("<b>SEC 8-K Citation</b>", body_style),
+                ]
+            ]
+            for ev in mat_events[:4]:
+                url_cite = f'<a href="{ev["url"]}" color="#3182CE"><u>View Form 8-K</u></a>' if ev.get("url") else "Verified"
+                events_table_data.append([
+                    Paragraph(ev.get("date", "N/A"), body_style),
+                    Paragraph(f"<b>{ev.get('title', 'Form 8-K')}</b><br/>{ev.get('summary', '')}", body_style),
+                    Paragraph(url_cite, body_style),
+                ])
+            events_table = Table(events_table_data, colWidths=[80, 314, 110])
+            events_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F7FAFC")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]))
+            story.append(events_table)
+            story.append(Spacer(1, 14))
+
+        # Recent Insider Transactions (Form 4) Table
+        insider_txs = report.financial_metrics.get("insider_transactions", [])
+        if insider_txs:
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#E2E8F0"), spaceAfter=14))
+            story.append(Paragraph("Recent Insider Trading Activity (SEC Form 4)", h1_style))
+            story.append(
+                Paragraph(
+                    "Verified equity transactions reported by executive officers and directors under Section 16(a) of the Securities Exchange Act of 1934.",
+                    body_style,
+                )
+            )
+            story.append(Spacer(1, 6))
+
+            tx_table_data = [
+                [
+                    Paragraph("<b>Reporting Owner & Role</b>", body_style),
+                    Paragraph("<b>Date</b>", body_style),
+                    Paragraph("<b>Type</b>", body_style),
+                    Paragraph("<b>Shares</b>", body_style),
+                    Paragraph("<b>Price</b>", body_style),
+                    Paragraph("<b>Total Value</b>", body_style),
+                    Paragraph("<b>SEC Filing</b>", body_style),
+                ]
+            ]
+            for tx in insider_txs[:6]:
+                type_color = "#38A169" if tx.get("code") == "P" or tx.get("type") == "Purchase" else "#E53E3E"
+                type_badge = f'<font color="{type_color}"><b>{tx.get("type", "Transaction")}</b></font>'
+                url_cite = f'<a href="{tx["url"]}" color="#3182CE"><u>Form 4</u></a>' if tx.get("url") else "Verified"
+                shares_str = f"{tx.get('shares', 0):,.0f}"
+                price_str = f"${tx.get('price', 0):,.2f}"
+                val_str = f"${tx.get('total_value', 0):,.2f}"
+                tx_table_data.append([
+                    Paragraph(f"<b>{tx.get('owner', 'Executive')}</b><br/>{tx.get('role', 'Officer')}", body_style),
+                    Paragraph(tx.get("date", "N/A"), body_style),
+                    Paragraph(type_badge, body_style),
+                    Paragraph(shares_str, body_style),
+                    Paragraph(price_str, body_style),
+                    Paragraph(val_str, body_style),
+                    Paragraph(url_cite, body_style),
+                ])
+            tx_table = Table(tx_table_data, colWidths=[120, 60, 54, 55, 55, 80, 80])
+            tx_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F7FAFC")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(tx_table)
+            story.append(Spacer(1, 14))
+
+        # Management Guidance Callout Box
+        guidance_items = report.financial_metrics.get("management_guidance", [])
+        if guidance_items:
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#E2E8F0"), spaceAfter=14))
+            story.append(Paragraph("Executive Guidance & Forward Outlook", h1_style))
+            for g in guidance_items[:4]:
+                story.append(Paragraph(f"• <b>{g.get('topic', 'Guidance')}:</b> {g.get('text', '')}", body_style))
+            story.append(Spacer(1, 12))
+
         # Primary Source Bibliography Table
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#E2E8F0"), spaceAfter=14))
         story.append(Paragraph("Primary Source Bibliography & SEC Filings", h1_style))

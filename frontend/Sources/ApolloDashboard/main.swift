@@ -500,10 +500,11 @@ let dashboardHTML = """
 
         <!-- Research Details Card -->
         <div class="card" id="details-card">
-            <div style="display: flex; gap: 1rem; border-bottom: 1px solid var(--border-subtle); margin-bottom: 1rem;">
+            <div style="display: flex; gap: 1rem; border-bottom: 1px solid var(--border-subtle); margin-bottom: 1rem; overflow-x: auto;">
                 <button class="tab-btn active" onclick="switchTab('itinerary-tab', this)">Research Itinerary</button>
                 <button class="tab-btn" onclick="switchTab('evidence-tab', this)">Evidence & Sources</button>
                 <button class="tab-btn" onclick="switchTab('report-tab', this)">Report & PDF</button>
+                <button class="tab-btn" onclick="switchTab('events-tab', this)">⚡ Corporate Events & Insiders</button>
             </div>
 
             <!-- Itinerary Tab -->
@@ -529,6 +530,12 @@ let dashboardHTML = """
                 <div id="report-content" style="background: var(--bg-elevated); padding: 1.5rem; border-radius: 8px; line-height: 1.7; font-size: 0.9rem;">
                     Report generation pending.
                 </div>
+            </div>
+
+            <!-- Events & Insiders Tab -->
+            <div id="events-tab" class="hidden">
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">SEC Form 8-K material disclosures, Form 4 insider trading activity, and forward management guidance:</p>
+                <div id="events-content" style="font-size: 0.9rem;">No material events or insider trades loaded yet.</div>
             </div>
         </div>
     </div>
@@ -559,7 +566,7 @@ let dashboardHTML = """
         }
 
         function switchTab(tabId, btn) {
-            document.querySelectorAll("#itinerary-tab, #evidence-tab, #report-tab").forEach(el => el.classList.add("hidden"));
+            document.querySelectorAll("#itinerary-tab, #evidence-tab, #report-tab, #events-tab").forEach(el => el.classList.add("hidden"));
             document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
             document.getElementById(tabId).classList.remove("hidden");
             btn.classList.add("active");
@@ -1088,6 +1095,124 @@ let dashboardHTML = """
                 });
 
                 document.getElementById("report-content").innerHTML = html;
+
+                // Render Events & Insiders tab
+                const fm = report.financial_metrics || {};
+                const matEvents = fm.material_events || [];
+                const insiderTxs = fm.insider_transactions || [];
+                const guidance = fm.management_guidance || [];
+
+                let eventsHTML = '';
+
+                // 1. Material Events (Form 8-K)
+                if (matEvents.length > 0) {
+                    eventsHTML += `
+                        <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+                            <h4 style="color: var(--accent-amber); font-size: 1.05rem; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>📄</span> Recent Material Corporate Disclosures (SEC Form 8-K)
+                            </h4>
+                            <div class="table-scroll-container" style="max-height: 280px;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 15%;">Filing Date</th>
+                                            <th style="width: 55%;">Event Title & Substantive Summary</th>
+                                            <th style="width: 15%;">Items</th>
+                                            <th style="width: 15%;">SEC Filing Link</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                    matEvents.forEach(ev => {
+                        const itemsStr = (ev.items && ev.items.length > 0)
+                            ? ev.items.map(it => `<span class="id-badge">${it.item_number}</span>`).join(" ")
+                            : '<span class="id-badge">8-K</span>';
+                        eventsHTML += `
+                            <tr>
+                                <td><span style="font-size: 0.8rem; color: var(--text-secondary);">${ev.date || 'Recent'}</span></td>
+                                <td>
+                                    <div style="font-weight: 600; color: #F1F5F9; margin-bottom: 0.2rem;">${ev.title}</div>
+                                    <div style="font-size: 0.8rem; color: #94A3B8;">${ev.summary}</div>
+                                </td>
+                                <td>${itemsStr}</td>
+                                <td><a class="sec-link" href="${ev.url}" target="_blank" rel="noopener noreferrer">↗ View 8-K</a></td>
+                            </tr>
+                        `;
+                    });
+                    eventsHTML += `</tbody></table></div></div>`;
+                }
+
+                // 2. Insider Trading (Form 4)
+                if (insiderTxs.length > 0) {
+                    eventsHTML += `
+                        <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+                            <h4 style="color: var(--accent-cyan); font-size: 1.05rem; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>👤</span> Insider Trading & Executive Ownership (SEC Form 4)
+                            </h4>
+                            <div class="table-scroll-container" style="max-height: 280px;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25%;">Reporting Owner & Role</th>
+                                            <th style="width: 15%;">Date</th>
+                                            <th style="width: 15%;">Action</th>
+                                            <th style="width: 15%;">Shares</th>
+                                            <th style="width: 15%;">Price / Total Value</th>
+                                            <th style="width: 15%;">SEC Source</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                    insiderTxs.forEach(tx => {
+                        const isBuy = tx.code === "P" || tx.type === "Purchase";
+                        const badgeStyle = isBuy
+                            ? "background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.4);"
+                            : "background: rgba(239, 68, 68, 0.2); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.4);";
+                        eventsHTML += `
+                            <tr>
+                                <td>
+                                    <div style="font-weight: 600; color: #F1F5F9;">${tx.owner}</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">${tx.role}</div>
+                                </td>
+                                <td><span style="font-size: 0.8rem; color: var(--text-secondary);">${tx.date}</span></td>
+                                <td><span style="padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; ${badgeStyle}">${tx.type} (${tx.code})</span></td>
+                                <td><span style="font-family: monospace;">${Number(tx.shares).toLocaleString()}</span></td>
+                                <td>
+                                    <div style="font-weight: 600;">$${Number(tx.total_value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">$${Number(tx.price).toFixed(2)} / share</div>
+                                </td>
+                                <td><a class="sec-link" href="${tx.url}" target="_blank" rel="noopener noreferrer">↗ Form 4</a></td>
+                            </tr>
+                        `;
+                    });
+                    eventsHTML += `</tbody></table></div></div>`;
+                }
+
+                // 3. Management Guidance
+                if (guidance.length > 0) {
+                    eventsHTML += `
+                        <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem;">
+                            <h4 style="color: var(--accent-blue); font-size: 1.05rem; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>🎙️</span> Management Guidance & Executive Commentary
+                            </h4>
+                            <div style="display: grid; gap: 0.75rem;">`;
+                    guidance.forEach(g => {
+                        eventsHTML += `
+                            <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0.85rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                                    <span style="font-weight: 600; color: var(--accent-cyan); font-size: 0.9rem;">${g.topic}</span>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted);">Attributed to ${g.speaker}</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: #E2E8F0; line-height: 1.5;">${g.text}</div>
+                            </div>
+                        `;
+                    });
+                    eventsHTML += `</div></div>`;
+                }
+
+                if (!eventsHTML) {
+                    eventsHTML = '<p style="color: var(--text-secondary); font-size: 0.9rem;">No Form 8-K material events, Form 4 insider trades, or guidance statements recorded for this run.</p>';
+                }
+                const eventsContainer = document.getElementById("events-content");
+                if (eventsContainer) eventsContainer.innerHTML = eventsHTML;
 
                 // PDF download button
                 const pdfBtn = document.getElementById("download-pdf-btn");

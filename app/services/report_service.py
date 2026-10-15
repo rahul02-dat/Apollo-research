@@ -125,6 +125,46 @@ class ReportService:
         analytics_plugin = getattr(self.synthesis_strategy, "_analytics_plugin", None) or FinancialAnalyticsPlugin()
         financial_metrics = analytics_plugin.compute_metrics(all_evidence)
 
+        # Collect material events and insider transactions for visual metrics
+        material_events = []
+        insider_transactions = []
+        management_guidance = []
+
+        for ev in all_evidence:
+            ev_type = ev.metadata.get("event_type") if ev.metadata else None
+            ev_date = getattr(ev, "period", None) or getattr(ev, "period_end", None) or getattr(ev, "fiscal_period", None) or "Recent"
+            if ev_type == "MATERIAL_EVENT_8K":
+                material_events.append({
+                    "title": ev.metadata.get("title", "Form 8-K Disclosure"),
+                    "summary": ev.context_snippet or ev.excerpt or "",
+                    "date": ev_date,
+                    "url": ev.source_url,
+                    "items": ev.metadata.get("items", []),
+                })
+            elif ev_type == "INSIDER_TRANSACTION_4":
+                insider_transactions.append({
+                    "owner": ev.metadata.get("owner", "Officer"),
+                    "role": ev.metadata.get("role", "Executive"),
+                    "type": ev.metadata.get("type", "Transaction"),
+                    "code": ev.metadata.get("code", "P"),
+                    "shares": ev.metadata.get("shares", 0),
+                    "price": ev.metadata.get("price", 0),
+                    "total_value": ev.value or 0,
+                    "date": ev_date,
+                    "url": ev.source_url,
+                })
+            elif ev_type in ["EARNINGS_TRANSCRIPT", "MANAGEMENT_GUIDANCE"]:
+                management_guidance.append({
+                    "topic": ev.metadata.get("topic") or ev.metadata.get("metric", "Outlook"),
+                    "speaker": ev.metadata.get("speaker", "Executive"),
+                    "text": ev.context_snippet,
+                    "url": ev.source_url,
+                })
+
+        financial_metrics["material_events"] = material_events
+        financial_metrics["insider_transactions"] = insider_transactions
+        financial_metrics["management_guidance"] = management_guidance
+
         report = FinalReport(
             report_id=f"RPT_{run.run_id[:8]}",
             run_id=run.run_id,

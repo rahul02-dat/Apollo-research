@@ -3,8 +3,10 @@
 from app.plugins.builtin.evidence_validator.plugin import create_plugin as create_validator_plugin
 from app.plugins.builtin.financial_analytics.plugin import create_plugin as create_analytics_plugin
 from app.plugins.builtin.html_extractor.plugin import create_plugin as create_html_plugin
+from app.plugins.builtin.management_transcripts.plugin import create_plugin as create_transcripts_plugin
 from app.plugins.builtin.model_provider.plugin import create_mock_plugin, create_ollama_plugin
 from app.plugins.builtin.pdf_exporter.plugin import create_plugin as create_pdf_plugin
+from app.plugins.builtin.sec_material_events.plugin import create_plugin as create_material_events_plugin
 from app.plugins.builtin.sec_source.plugin import create_plugin as create_sec_plugin
 from app.plugins.builtin.synthesis_strategy.plugin import create_plugin as create_synthesis_plugin
 from app.plugins.builtin.xbrl_extractor.plugin import create_plugin as create_xbrl_plugin
@@ -16,9 +18,12 @@ def register_builtin_plugins(registry: PluginRegistry) -> None:
     registry.register(create_sec_plugin(), overwrite=True)
     registry.register(create_html_plugin(), overwrite=True)
     registry.register(create_xbrl_plugin(), overwrite=True)
+    registry.register(create_material_events_plugin(), overwrite=True)
+    registry.register(create_transcripts_plugin(), overwrite=True)
     registry.register(create_validator_plugin(), overwrite=True)
     registry.register(create_analytics_plugin(), overwrite=True)
     registry.register(create_synthesis_plugin(), overwrite=True)
     registry.register(create_ollama_plugin(), overwrite=True)
     registry.register(create_mock_plugin(), overwrite=True)
     registry.register(create_pdf_plugin(), overwrite=True)
+

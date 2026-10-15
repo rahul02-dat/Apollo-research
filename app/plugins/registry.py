@@ -74,6 +74,10 @@ class PluginRegistry:
                     f"Plugin '{plugin.manifest.plugin_id}' of type '{plugin_type}' missing required method '{method}'."
                 )
 
+    def has_plugin(self, plugin_id: str) -> bool:
+        """Returns True if the plugin is registered and enabled."""
+        return plugin_id in self._plugins and self.is_enabled(plugin_id)
+
     def get_plugin(self, plugin_id: str) -> Plugin:
         if plugin_id not in self._plugins:
             raise KeyError(f"Plugin '{plugin_id}' not found in registry.")
